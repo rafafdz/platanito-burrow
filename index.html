@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#cfe8f2" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Platanito Burrow</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><ellipse cx='36' cy='26' rx='10' ry='26' fill='%23f7f5f0' stroke='%23222' stroke-width='3'/><ellipse cx='64' cy='26' rx='10' ry='26' fill='%23222'/><circle cx='50' cy='64' r='30' fill='%23f7f5f0' stroke='%23222' stroke-width='3'/><circle cx='64' cy='58' r='9' fill='%23222'/><circle cx='40' cy='60' r='4' fill='%23222'/><circle cx='50' cy='72' r='4' fill='%23f4a3b4'/></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -49,7 +52,7 @@
           around home: out in the garden, buried under soil mounds, inside the house, and deep in the winding tunnels under the lawn.
           Hop, dig and sniff until you find all ten.
         </p>
-        <div class="controls">
+        <div class="controls kb-only">
           <div><kbd>W A S D</kbd><span>hop around</span></div>
           <div><kbd>Mouse</kbd><span>look around</span></div>
           <div><kbd>Shift</kbd><span>bunny zoomies</span></div>
@@ -61,8 +64,18 @@
           <div><kbd>T</kbd><span>thump your foot</span></div>
         </div>
         <button id="play">Start hopping</button>
+        <div class="controls touch-only">
+          <div><kbd>Left thumb</kbd><span>joystick: hop around (push to the rim for zoomies)</span></div>
+          <div><kbd>Right thumb</kbd><span>drag to look, tap to boop</span></div>
+          <div><kbd>Hop</kbd><span>big hop onto beds, the bench, the sofa</span></div>
+          <div><kbd>E</kbd><span>dig · go inside · munch carrots (shows what it will do)</span></div>
+          <div><kbd>Sneak</kbd><span>toggle sneaking low &amp; quiet</span></div>
+          <div><kbd>Sniff</kbd><span>scent trail to the nearest platanito</span></div>
+          <div><kbd>Thump</kbd><span>thump your foot</span></div>
+          <div><kbd>II</kbd><span>pause, sound, look sensitivity</span></div>
+        </div>
         <div class="hint">The front door leads into the house. Two burrow holes lead underground: your mound in the south-west corner, and Canela&#39;s hole by the lemon tree.</div>
-        <div class="music-note">&#9835; Soundtrack: <b>Rabbit Hop</b>, a bouncy procedural rabbit music loop. It starts when you press Start.</div>
+        <div class="music-note">&#9835; Soundtrack: <b>Platanito&#39;s Garden</b>, a procedural adventure score in C major with a little rabbit hop motif. It changes its arrangement for the garden, the house and the burrow, and starts when you press Start.</div>
       </div>
     </div>
 
@@ -71,6 +84,7 @@
         <h2>Hop paused</h2>
         <label class="row">Mouse sensitivity <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" /></label>
         <label class="row">Sound &amp; rabbit music <input id="soundOn" type="checkbox" checked /></label>
+        <div class="now-playing" id="nowPlaying">&#9835; Platanito&#39;s Garden</div>
         <button id="resume">Back to the garden</button>
       </div>
     </div>
@@ -87,6 +101,8 @@
         </div>
       </div>
     </div>
+
+    <div id="touch" aria-hidden="true"></div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

@@ -718,7 +718,7 @@ export function buildWorld(scene) {
 // ---------------------------------------------------------------------------
 // Instanced grass + flowers (built after the world so they avoid obstacles)
 // ---------------------------------------------------------------------------
-export function buildFoliage(world) {
+export function buildFoliage(world, { grass = 22000 } = {}) {
   const { scene, isFree, groundHeight: gh, timeUniform } = world;
   const rand = rng(77);
 
@@ -757,7 +757,7 @@ export function buildFoliage(world) {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     const mat = windify(new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 1 }), 0.035);
-    const N = 22000;
+    const N = grass;
     const mesh = new THREE.InstancedMesh(g, mat, N);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
     let n = 0;

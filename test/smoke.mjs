@@ -1,7 +1,7 @@
 // Smoke test: boots the Vite dev server, checks HTTP, then drives the game in headless Chromium
 // through the window.__game debug hook. Run with `npm test`.
 import { createServer } from 'vite';
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -66,6 +66,8 @@ try {
   check('HTTP GET / returns 200', res.status === 200, `${res.status} ${url}`);
   check('page has the game title', html.includes('<title>Platanito Burrow</title>'));
   check('page mentions rabbit music', /rabbit music/i.test(html));
+  check('page describes the soundtrack sections', /Platanito&#39;s Garden/.test(html) && /garden, the house and the burrow/.test(html));
+  check('page is set up for phones (viewport-fit, no zoom)', /viewport-fit=cover/.test(html) && /user-scalable=no/.test(html));
   const js = await fetch(new URL('src/main.js', url));
   check('HTTP GET /src/main.js returns 200', js.status === 200, String(js.status));
 
@@ -98,6 +100,27 @@ try {
 
   const d1 = await page.evaluate(() => { window.__game.startPlay(); return window.__game.debug(); });
   check('rabbit music plays after Start', d1.music.started && d1.music.playing && !d1.music.muted);
+
+  check('soundtrack has Garden / House / Burrow sections', JSON.stringify(d1.music.sections) === '["garden","house","burrow"]' && d1.music.key === 'C major' && d1.music.bpm === 92, JSON.stringify(d1.music.sections));
+  check('touch controls stay hidden on desktop', d1.touch.enabled === false && d1.touch.visible === false);
+  const previews = await page.evaluate(async () => {
+    const out = [];
+    for (const s of ['garden', 'house', 'burrow']) out.push(await window.__game.renderMusicPreview(s, 6));
+    return out;
+  });
+  for (const p of previews) {
+    check(`music "${p.section}" renders at a moderate level in stereo`, p.peak > 0.03 && p.peak < 0.8 && p.rmsDb > -45 && p.rmsDb < -12 && p.stereoDiff > 0, `peak=${p.peak} rms=${p.rmsDb}dB stereo=${p.stereoDiff}`);
+  }
+  const sect = await page.evaluate(async () => {
+    const g = window.__game, wait = (f) => new Promise((res) => { const t0 = performance.now(); const i = setInterval(() => { if (f() || performance.now() - t0 > 8000) { clearInterval(i); res(f()); } }, 50); });
+    const out = {};
+    g.enterHouse(); out.house = await wait(() => g.sound.music.section === 'house');
+    g.enterBurrow(0); out.burrow = await wait(() => g.sound.music.section === 'burrow');
+    g.exitBurrow(0); out.garden = await wait(() => g.sound.music.section === 'garden');
+    out.stepAdvanced = g.sound.music.step > 0;
+    return out;
+  });
+  check('music section follows the zone (house, burrow, back to garden)', sect.house && sect.burrow && sect.garden && sect.stepAdvanced, JSON.stringify(sect));
 
   const rab = await page.evaluate(() => {
     const g = window.__game, before = g.npc.group.position.clone();
@@ -226,6 +249,98 @@ try {
   check('won exactly at 10/10', ten && ten.won === true && win.d.hud.count === '10/10', win.d.hud.count);
 
   check('no console errors', errors.length === 0, errors.slice(0, 5).join(' | '));
+
+  // ---------------------------------------------------------------- mobile (touch only, no keyboard/mouse)
+  await page.close(); // free the software GPU for the mobile run
+  const mctx = await browser.newContext({ ...devices['Pixel 7'] });
+  const m = await mctx.newPage();
+  const merrors = [];
+  m.on('console', (msg) => {
+    if (msg.type() !== 'error') return;
+    if (/fonts\.(googleapis|gstatic)\.com/.test(msg.location()?.url ?? '')) return;
+    merrors.push(msg.text());
+  });
+  m.on('pageerror', (e) => merrors.push(`pageerror: ${e.message}`));
+  await m.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await m.waitForFunction(() => window.__game?.debug, null, { timeout: 180000 });
+  const mt0 = await m.evaluate(() => ({ touch: document.body.classList.contains('touch'), dpr: window.__game.renderer.getPixelRatio(), touchHelp: getComputedStyle(document.querySelector('.controls.touch-only')).display }));
+  check('mobile: touch mode detected, touch help shown on title', mt0.touch && mt0.touchHelp !== 'none', JSON.stringify(mt0));
+  check('mobile: renderer pixel ratio capped for performance', mt0.dpr <= 1.25, `dpr=${mt0.dpr}`);
+  await m.tap('#play');
+  await m.waitForFunction(() => window.__game.G.state === 'play', null, { timeout: 20000 });
+  const mt1 = await m.evaluate(() => ({ lock: !!document.pointerLockElement, noLock: window.__game.G.noLock, d: window.__game.debug() }));
+  check('mobile: Start works with a tap and skips pointer lock', !mt1.lock && mt1.noLock && mt1.d.state === 'play' && mt1.d.touch.visible, JSON.stringify({ lock: mt1.lock, state: mt1.d.state }));
+  check('mobile: rabbit music started from the tap', mt1.d.music.started && mt1.d.music.playing);
+
+  const layout = () => m.evaluate(() => {
+    const ids = ['#stickBase', '#btnHop', '#btnAct', '#btnSneak', '#btnSniff', '#btnThump', '#btnPause'];
+    const hud = ['.bananas', '.counters', '#zone', '.meters'];
+    const vw = innerWidth, vh = innerHeight;
+    const rect = (sel) => document.querySelector(sel).getBoundingClientRect();
+    const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const controls = ids.map((sel) => {
+      const r = rect(sel), el = document.querySelector(sel);
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { sel, w: Math.round(r.width), inView: r.left >= 0 && r.top >= 0 && r.right <= vw && r.bottom <= vh && r.width > 0,
+        onTop: sel === '#stickBase' ? true : !!hit && (hit === el || el.contains(hit)), visible: getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none' };
+    });
+    const clashes = [];
+    for (const c of ids) for (const h of hud) if (overlap(rect(c), rect(h))) clashes.push(`${c}~${h}`);
+    return { vw, vh, controls, clashes };
+  });
+  for (const [label, size] of [['portrait', null], ['landscape', { width: 915, height: 412 }]]) {
+    if (size) { await m.setViewportSize(size); await m.waitForTimeout(600); }
+    const L = await layout();
+    const bad = L.controls.filter((c) => !c.inView || !c.onTop || !c.visible);
+    check(`mobile ${label} (${L.vw}x${L.vh}): all touch controls visible, on screen and tappable`, bad.length === 0, bad.map((c) => JSON.stringify(c)).join(' ') || L.controls.map((c) => `${c.sel}:${c.w}px`).join(' '));
+    check(`mobile ${label}: touch controls don't cover the HUD`, L.clashes.length === 0, L.clashes.join(', '));
+  }
+  await m.setViewportSize({ width: 412, height: 915 });
+  await m.waitForTimeout(400);
+
+  // drive the rabbit with touch only: joystick, look drag, buttons
+  const pt = (sel, type, x, y, id = 7) => m.evaluate(({ sel, type, x, y, id }) => {
+    document.querySelector(sel).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y }));
+  }, { sel, type, x, y, id });
+  const p0 = await m.evaluate(() => { const g = window.__game; g.player.pos.set(0, 0, 2); g.player.feetY = g.world.floorAt(0, 2, 1); g.player.yaw = Math.PI; return [g.player.pos.x, g.player.pos.z, g.player.yaw]; });
+  await pt('#moveZone', 'pointerdown', 90, 760);
+  await pt('#moveZone', 'pointermove', 90, 700);
+  const moved = await m.evaluate(() => { const g = window.__game; const ax = [g.input.axisX, g.input.axisY]; g.step(60); return { ax, pos: [g.player.pos.x, g.player.pos.z] }; });
+  await pt('#moveZone', 'pointerup', 90, 700);
+  const dist = Math.hypot(moved.pos[0] - p0[0], moved.pos[1] - p0[1]);
+  check('mobile: left joystick moves the rabbit forward', dist > 0.8 && moved.ax[1] < -0.5 && moved.pos[1] > p0[1], `moved ${dist.toFixed(2)}m, axis=${moved.ax.map((v) => (v ?? 0).toFixed(2))}`);
+  await pt('#lookZone', 'pointerdown', 250, 420, 8);
+  await pt('#lookZone', 'pointermove', 330, 420, 8);
+  await pt('#lookZone', 'pointerup', 330, 420, 8);
+  const yaw1 = await m.evaluate(() => window.__game.player.yaw);
+  check('mobile: right-side drag turns the camera', Math.abs(yaw1 - p0[2]) > 0.1, `yaw ${p0[2].toFixed(2)} -> ${yaw1.toFixed(2)}`);
+  const hops0 = await m.evaluate(() => window.__game.player.hops || 0);
+  await m.tap('#btnHop');
+  const hop = await m.evaluate(() => window.__game.player.hops || 0);
+  check('mobile: Hop button hops', hop === hops0 + 1, `hops ${hops0} -> ${hop}`);
+  await m.tap('#btnSneak');
+  const sneak = await m.evaluate(() => { window.__game.step(3); return { input: window.__game.input.touchSneak, crouch: window.__game.player.crouch }; });
+  await m.tap('#btnSneak');
+  check('mobile: Sneak button toggles sneaking', sneak.input === true && sneak.crouch === true);
+  await m.tap('#btnSniff');
+  check('mobile: Sniff button sniffs', await m.evaluate(() => window.__game.G.sniffCD > 0));
+  await m.tap('#btnThump');
+  check('mobile: Thump button thumps', await m.evaluate(() => document.querySelector('#toast .t-title').textContent === '*THUMP*'));
+  const ready = await m.evaluate(() => { const g = window.__game, d = g.debug().houseDoor; g.player.pos.set(d[0], 0, d[2] + 0.6); g.player.feetY = g.world.floorAt(d[0], d[2] + 0.6, 1); g.step(2); const b = document.querySelector('#btnAct'); return { ready: b.classList.contains('ready'), label: document.querySelector('#btnActLabel').textContent }; });
+  check('mobile: E button shows the available action', ready.ready && ready.label === 'Go inside the house', JSON.stringify(ready));
+  await m.tap('#btnAct');
+  const inHouse = await m.evaluate(() => window.__game.debug());
+  check('mobile: E button takes the rabbit into the house', inHouse.zone === 'house' && inHouse.hud.zone === 'House');
+  await m.evaluate(() => { const g = window.__game; g.player.pos.set(g.house.exit.pos.x, 0, g.house.exit.pos.z); g.step(2); });
+  await m.tap('#btnAct');
+  check('mobile: E button leaves the house again', await m.evaluate(() => window.__game.G.zone === 'surface'));
+  await m.tap('#btnPause');
+  const paused = await m.evaluate(() => ({ state: window.__game.G.state, overlay: !document.querySelector('#pause').classList.contains('hidden'), touch: window.__game.debug().touch.visible }));
+  check('mobile: pause button pauses and hides the touch controls', paused.state === 'paused' && paused.overlay && !paused.touch, JSON.stringify(paused));
+  await m.tap('#resume');
+  check('mobile: resume with a tap', await m.evaluate(() => window.__game.G.state === 'play'));
+  check('mobile: no console errors', merrors.length === 0, merrors.slice(0, 5).join(' | '));
+  await mctx.close();
 } catch (e) {
   check('smoke test ran without exceptions', false, e.stack || String(e));
 } finally {

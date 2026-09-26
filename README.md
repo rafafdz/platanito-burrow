@@ -35,6 +35,8 @@ You see the world from a rabbit's eye height, about 30 cm off the ground. Your w
 | `T` | thump your foot (sparrows scatter) |
 | `Esc` | pause (sensitivity, sound & rabbit music) |
 
+On a phone, see [Playing on a phone](#playing-on-a-phone).
+
 ## Goal: 10 golden platanitos
 
 The HUD (top left) shows `collected/10` plus a split, e.g. `Garden 2/4 · House 1/1 · Burrow 3/5`. A badge below it shows where you are: **Surface**, **House** or **Burrow**. You win at exactly 10/10.
@@ -61,9 +63,34 @@ Hop to the front door (in front of the porch step) and press `E` to go inside. T
 
 Canela is the other rabbit in the garden, and she is drawn to be easy to tell apart from you: cinnamon-brown with a cream chest, floppy lop ears and a daisy behind one ear, with no black spots. She idles and nibbles, hops around near her hole, and hops away if you get too close. Click to nose-boop her.
 
-## Music
+## Music: *Platanito's Garden*
 
-**Rabbit Hop** is a small procedural WebAudio loop at 116 BPM. It has bouncy "boing" bass notes, woodblock ticks, a skipping pentatonic melody, and an upward hop-glide every other bar. It only starts after you press **Start hopping**. The pause menu's **Sound & rabbit music** toggle mutes it along with all other sound. The loop is muffled a little indoors and more underground.
+The soundtrack is procedural and built entirely with the Web Audio API, with no audio files (`src/music.js`). It is one song at a steady **92 BPM in C major**, and each zone gets its own arrangement of it:
+
+| Section | Harmony (16 bars) | Arrangement |
+| --- | --- | --- |
+| **Garden** | I–V–vi–IV · I–V–IV–I · IV–V–iii–vi · IV–V–V7–I | bouncing sub-bass, plucked triangle arpeggio, triangle lead, soft kick, shaker, woodblock |
+| **House** | I–vi–IV–V "doo-wop" with Fmaj7 / Dm / G7 colours | walking bass, mellow sine broken chords, lead an octave lower, brushes only, warmer filter |
+| **Burrow** | IV–I–V–vi with Cadd9 / Fmaj7 | droning bass, sparse bell arpeggio, echoing lead every other bar, no drums, dark filter, more reverb |
+
+- **Melody:** a memorable 8-bar theme (A) that alternates with a B phrase.
+- **Rabbit motif:** bar 7 of every phrase is the rabbit "hop": G–C–G–E leaps played as springy plucks that bend up into pitch, each with a woodblock "paw" underneath.
+- **Mix:** a detuned sawtooth pad, a dotted-eighth echo with a darkened feedback loop, and a generated reverb. Parts are panned across the stereo field, and everything runs through a gentle compressor at a moderate level (offline renders peak around 0.16–0.22 at about −27 dB RMS).
+- **Zone changes:** the new arrangement starts on the next bar line, while a filter sweep and a reverb glide blend the change over about 2 seconds.
+- **Timing:** if the page stalls (for example, a background tab), the scheduler skips missed notes instead of playing them in a burst.
+- **Start and mute:** audio only starts after you press **Start hopping**. The pause menu's **Sound & rabbit music** toggle mutes everything, and it also shows which theme is playing.
+
+## Playing on a phone
+
+The game plays completely with touch, no keyboard or mouse needed. It detects a touch screen (`pointer: coarse`); add `?touch=1` or `?touch=0` to force touch mode on or off.
+
+- **Left thumb:** a floating joystick that appears where you touch and gives analog speed. Push past the rim for zoomies.
+- **Right thumb:** drag to look, or tap to boop.
+- **Buttons:** **Hop** (big), **E**, **Sneak** (toggle), **Sniff**, **Thump**, and **II** to pause. The E button lights up and shows what it will do next, e.g. "Go inside the house".
+- **Starting:** Start works with a tap. Pointer lock is only requested for mouse players. On touch it's skipped, and fullscreen is requested where the browser allows it.
+- **Layout:** the controls respect safe areas and notches (`viewport-fit=cover`, `env(safe-area-inset-*)`) and resize with the screen. They sit only in the bottom corners, and the HUD moves up so nothing is covered, in both portrait and landscape. Page zoom, scrolling and long-press selection are disabled while playing.
+- **View:** portrait screens get a wider field of view so the view isn't cramped.
+- **Performance:** on phones the pixel ratio is capped at 1.25, the shadow map is 1024 instead of 2048, and there is half as much grass.
 
 ## Deployment
 
@@ -81,11 +108,12 @@ Every push to `main` runs `.github/workflows/deploy-pages.yml`. The workflow run
    - exactly 10 bananas (4 garden / 1 house / 5 burrow) and a HUD reading 0/10
    - at least 2 burrow entrances
    - Canela is present, wanders near her hole, and is on screen in a third-person view
-   - the music stays silent until Start, then plays
+   - the music stays silent until Start, then plays; the soundtrack has Garden, House and Burrow sections, each renders offline at a moderate stereo level without clipping, and the section follows the zone
    - you can enter the tunnels, walk a winding BFS path with real collisions, collect a banana, and exit
    - you can enter the house, hop onto the sofa to collect its platanito, and leave again
    - the game is not won at 9/10 and is won at 10/10
    - there are no console errors
+5. repeats key checks on an emulated **Pixel 7** (touch only): touch mode is detected, the pixel ratio is capped, Start works with a tap without pointer lock, and all touch controls are visible, on screen, tappable and clear of the HUD in both portrait and landscape. It then plays using only touch: the joystick moves, the right-side drag turns the view, and Hop, Sneak, Sniff, Thump, E (in and out of the house), pause and resume all work, with no console errors.
 
 ```js
 __game.debug()        // { player, bananas: { total, collected, surface, house, burrow, list }, zone, hud, entrances, houseDoor, tunnels, npc, music, won }
@@ -103,6 +131,8 @@ __game.step(60)       // advance the simulation 60 frames without rendering
 - `src/underground.js`: seeded tunnel generator (`generateTunnels`) and the underground zone
 - `src/collide.js`: box collision with hop-onto surfaces (used by the house)
 - `src/entities.js`: golden platanito model, Canela, sparrows, butterflies, ball, particles
-- `src/audio.js`: procedural sound (including the foot thump) and the Rabbit Hop music loop
+- `src/audio.js`: procedural sound effects (including the foot thump)
+- `src/music.js`: the *Platanito's Garden* soundtrack (sections, scheduler, mix)
+- `src/touch.js`: mobile touch controls
 - `src/main.js`: zones, bananas, interactions, HUD, main loop, `window.__game` debug hook
 - `test/smoke.mjs`: the `npm test` smoke test

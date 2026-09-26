@@ -5,6 +5,8 @@ import { buildHouseInterior } from './house.js';
 import { Bunny } from './player.js';
 import { Birds, Butterflies, Ball, Particles, Rabbit, makeBanana } from './entities.js';
 import { Sound } from './audio.js';
+import { SECTIONS, Soundtrack } from './music.js';
+import { isTouchDevice, setupTouch } from './touch.js';
 
 export const BANANA_TOTAL = 10;
 
@@ -14,9 +16,12 @@ const params = new URLSearchParams(location.search);
 const seed = Number.parseInt(params.get('seed'), 10) || 20260926;
 
 // ---------------------------------------------------------------- renderer
+// Phones get a lower pixel ratio, a smaller shadow map and less grass so they stay smooth.
+const TOUCH = isTouchDevice();
+document.body.classList.toggle('touch', TOUCH);
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, TOUCH ? 1.25 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -28,7 +33,8 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.03, 600);
 
 const world = buildWorld(scene);
-const { flowerHeads } = buildFoliage(world);
+if (TOUCH) world.sun.shadow.mapSize.set(1024, 1024);
+const { flowerHeads } = buildFoliage(world, { grass: TOUCH ? 11000 : 22000 });
 const underground = buildUnderground(seed, world.entrances);
 const house = buildHouseInterior();
 const player = new Bunny(world, camera);
@@ -195,14 +201,22 @@ function startPlay() {
   const first = G.time === 0 && G.state === 'title';
   sound.init();
   G.state = 'play';
+  document.body.classList.add('playing');
   ['title', 'pause', 'end'].forEach((id) => $(id).classList.add('hidden'));
   $('hud').classList.remove('hidden');
   hud();
   if (first) setTimeout(() => toast('Ten golden platanitos are hidden around here.', 'In the garden, inside the house, and deep in the tunnels. Press E at the front door or a burrow hole to go in.', 5600), 500);
 }
 
+// Pointer lock is only for mouse players; on touch screens Start just starts.
 function requestLock() {
   sound.init();
+  if (TOUCH) {
+    G.noLock = true;
+    try { document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.catch?.(() => {}); } catch { /* optional */ }
+    startPlay();
+    return;
+  }
   try {
     const p = canvas.requestPointerLock?.();
     if (p?.catch) p.catch(() => { G.noLock = true; startPlay(); });
@@ -211,11 +225,17 @@ function requestLock() {
 
 document.addEventListener('pointerlockchange', () => {
   if (locked()) startPlay();
-  else if (G.state === 'play' && !G.noLock) {
-    G.state = 'paused';
-    $('pause').classList.remove('hidden');
-  }
+  else if (G.state === 'play' && !G.noLock) pause();
 });
+
+function pause() {
+  if (G.state !== 'play') return;
+  G.state = 'paused';
+  document.body.classList.remove('playing');
+  touchUI?.reset();
+  for (const k in input) input[k] = typeof input[k] === 'number' ? 0 : false;
+  $('pause').classList.remove('hidden');
+}
 document.addEventListener('pointerlockerror', () => { G.noLock = true; startPlay(); });
 
 $('play').addEventListener('click', requestLock);
@@ -225,14 +245,33 @@ $('again').addEventListener('click', () => location.reload());
 $('sens').addEventListener('input', (e) => { player.sensitivity = parseFloat(e.target.value); });
 $('soundOn').addEventListener('change', (e) => sound.setMuted(!e.target.checked));
 addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && G.noLock && G.state === 'play') { G.state = 'paused'; $('pause').classList.remove('hidden'); }
+  if (e.code === 'Escape' && G.noLock && G.state === 'play') pause();
 });
+
+// ---------------------------------------------------------------- touch controls
+const touchUI = TOUCH ? setupTouch({
+  root: $('touch'), input, player,
+  isPlaying: () => G.state === 'play',
+  actions: {
+    hop: () => { if (player.hop()) sound.whoosh(); },
+    interact: () => interact(),
+    sniff: () => sniff(),
+    thump: () => thump(),
+    boop: () => boop(),
+    pause: () => pause(),
+  },
+}) : null;
 
 // ---------------------------------------------------------------- zones
 function fade() {
   const f = $('fade');
   f.classList.add('on');
   setTimeout(() => f.classList.remove('on'), 260);
+}
+
+function nowPlaying() {
+  const sec = SECTIONS[G.zone === 'surface' ? 'garden' : G.zone].label;
+  $('nowPlaying').textContent = `\u266B Platanito's Garden: ${sec} theme`;
 }
 
 function moveTo(zone, pos, yaw) {
@@ -245,6 +284,7 @@ function moveTo(zone, pos, yaw) {
   player.yaw = yaw; player.pitch = 0;
   for (const { l, base } of overlayLights) l.intensity = base * ZONES[zone].light;
   sound.setZone(zone);
+  nowPlaying();
   fade(); hud();
 }
 
@@ -423,6 +463,7 @@ function win() {
       <div><b>${G.tunnelVisits + G.houseVisits}</b><span>trips inside</span></div>
       <div><b>${G.bf + G.birds + G.npcBoops}</b><span>boops</span></div>`;
     G.state = 'won';
+    document.body.classList.remove('playing');
     if (locked()) document.exitPointerLock();
     $('end').classList.remove('hidden');
     hud();
@@ -500,6 +541,7 @@ function update(dt) {
     const pr = $('prompt');
     if (it) { pr.innerHTML = `<kbd>E</kbd>${it.text}`; pr.classList.add('show'); }
     else pr.classList.remove('show');
+    touchUI?.setAction(it?.text);
     document.body.classList.toggle('sneaking', player.crouch);
     $('stamina').style.width = `${player.stamina * 100}%`;
     $('sniff').style.width = `${(1 - G.sniffCD / 6) * 100}%`;
@@ -552,16 +594,43 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+// Portrait phones would get a very narrow view with a fixed vertical FOV, so widen it
+// until the horizontal view is reasonable (capped to avoid fisheye).
+function fitCamera() {
+  const aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = aspect;
+  camera.fov = aspect >= 1 ? 80 : Math.min(100, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(35)) / aspect)));
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+addEventListener('resize', fitCamera);
+fitCamera();
 
 hud();
 frame();
 
 // ---------------------------------------------------------------- debug / test hook
+// Renders a few seconds of one soundtrack section offline and reports its levels.
+async function renderMusicPreview(section = 'garden', seconds = 8) {
+  const rate = 44100, ctx = new OfflineAudioContext(2, rate * seconds, rate);
+  const noise = ctx.createBuffer(1, rate, rate);
+  noise.getChannelData(0).forEach((_, i, d) => { d[i] = Math.random() * 2 - 1; });
+  const st = new Soundtrack(ctx, ctx.destination, noise);
+  st.section = section;
+  st.reverbSend.gain.value = SECTIONS[section].reverb;
+  st.tone.frequency.value = SECTIONS[section].tone;
+  const sixteenth = 60 / 92 / 4;
+  for (let t = 0.05; t < seconds - 1; t += sixteenth) { st.playStep(t, st.step % 16); st.step++; }
+  const buf = await ctx.startRendering();
+  let peak = 0, sum = 0, n = 0, lr = 0;
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  for (let i = 0; i < L.length; i++) {
+    peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
+    sum += L[i] * L[i] + R[i] * R[i]; n += 2; lr += Math.abs(L[i] - R[i]);
+  }
+  return { section, steps: st.step, peak: +peak.toFixed(3), rmsDb: +(10 * Math.log10(sum / n)).toFixed(1), stereoDiff: +(lr / L.length).toFixed(4) };
+}
+
 function debug() {
   const L = underground.layout;
   const round = (v) => v.toArray().map((n) => +n.toFixed(2));
@@ -589,7 +658,8 @@ function debug() {
       name: npc.name, inScene: npc.group.parent === scene, visible: npc.group.visible, pos: round(npc.group.position),
       home: round(npc.home), hops: npc.hops, state: npc.state,
     },
-    music: { started: !!sound.ctx, playing: sound.musicPlaying, muted: sound.muted, step: sound.musicStep ?? 0 },
+    music: { started: !!sound.ctx, playing: sound.musicPlaying, muted: sound.muted, step: sound.musicStep ?? 0, ctxState: sound.ctx?.state ?? null, ...(sound.music ? sound.music.info() : { sections: Object.keys(SECTIONS) }) },
+    touch: { enabled: TOUCH, visible: getComputedStyle($('touch')).display !== 'none' },
     won: G.won,
   };
 }
@@ -597,5 +667,5 @@ function debug() {
 window.__game = {
   step: (n = 60) => { for (let i = 0; i < n; i++) update(1 / 60); },
   debug, seed, BANANA_TOTAL, renderer, G, player, world, underground, house, bananas, npc, sound, birds, butterflies, ball, camera,
-  startPlay, interact, sniff, boop, thump, input, enterBurrow, exitBurrow, enterHouse, exitHouse, collect, finishDig, currentInteraction,
+  startPlay, interact, sniff, boop, thump, input, pause, touchUI, renderMusicPreview, enterBurrow, exitBurrow, enterHouse, exitHouse, collect, finishDig, currentInteraction,
 };

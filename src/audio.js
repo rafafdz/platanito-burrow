@@ -1,9 +1,10 @@
+import { Soundtrack } from './music.js';
+
 // Tiny procedural sound kit: everything is synthesised with WebAudio, no assets.
 export class Sound {
   constructor() {
     this.ctx = null;
     this.muted = false;
-    this.musicPlaying = false;
   }
 
   init() {
@@ -32,7 +33,9 @@ export class Sound {
     wind.start(); lfo.start();
 
     this.scheduleBirds();
-    this.scheduleMusic();
+    this.music = new Soundtrack(ctx, this.master, this.noise);
+    if (this.zone) this.music.setSection(this.zone === 'surface' ? 'garden' : this.zone);
+    this.music.start();
   }
 
   setMuted(m) {
@@ -85,71 +88,14 @@ export class Sound {
     setTimeout(loop, 1500);
   }
 
-  // "Rabbit Hop": a bouncy 4-bar loop. Bass "boings" on the beat, woodblock ticks,
-  // a pentatonic melody with a skipping rhythm, and an upward hop-glide every other bar.
-  scheduleMusic() {
-    const ctx = this.ctx;
-    this.musicBus = ctx.createGain();
-    this.musicBus.gain.value = 0.55;
-    this.musicFilter = ctx.createBiquadFilter();
-    this.musicFilter.type = 'lowpass';
-    this.musicFilter.frequency.value = 18000;
-    this.musicBus.connect(this.musicFilter).connect(this.master);
-    const bpm = 116, eighth = 60 / bpm / 2;
-    const chords = [[261.63, 329.63, 392.0], [220.0, 261.63, 329.63], [174.61, 220.0, 261.63], [196.0, 246.94, 293.66]];
-    const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
-    // skipping rhythm: 1 = note, 0 = rest (per eighth), fixed so the loop is recognisable
-    const rhythm = [1, 0, 1, 1, 0, 1, 1, 0];
-    const melody = [];
-    let idx = 2;
-    for (let bar = 0; bar < 4; bar++) {
-      for (let e = 0; e < 8; e++) {
-        idx = Math.max(0, Math.min(scale.length - 1, idx + [-1, 1, 2, -2, 1, 0, -1, 1][(bar * 3 + e) % 8]));
-        melody.push(rhythm[e] ? scale[idx] : 0);
-      }
-    }
-    this.musicStep = 0;
-    this.musicPlaying = true;
-    let next = ctx.currentTime + 0.1;
-    const voice = (type, f0, f1, t, dur, vol) => {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = type;
-      o.frequency.setValueAtTime(f0, t);
-      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g).connect(this.musicBus);
-      o.start(t); o.stop(t + dur + 0.05);
-    };
-    const tick = () => {
-      while (next < ctx.currentTime + 0.25) {
-        const st = this.musicStep % 32, bar = Math.floor(st / 8), e = st % 8, chord = chords[bar];
-        if (e === 0 || e === 4) voice('sine', chord[0] / 2 * 1.5, chord[0] / 2, next, 0.28, 0.16); // bass boing
-        if (e === 2 || e === 6) voice('triangle', chord[1], chord[1], next, 0.18, 0.05);
-        if (e === 2 || e === 6) voice('triangle', chord[2], chord[2], next, 0.18, 0.04);
-        if (e % 2 === 1) { // woodblock tick
-          const src = ctx.createBufferSource(); src.buffer = this.noise;
-          const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 6;
-          const g = ctx.createGain(); g.gain.setValueAtTime(0.12, next); g.gain.exponentialRampToValueAtTime(0.0001, next + 0.04);
-          src.connect(f).connect(g).connect(this.musicBus); src.start(next, Math.random()); src.stop(next + 0.05);
-        }
-        if (melody[st]) voice('square', melody[st], melody[st], next, 0.16, 0.025);
-        if (melody[st]) voice('sine', melody[st], melody[st], next, 0.22, 0.05);
-        if (bar % 2 === 1 && e === 7) voice('sine', 400, 1400, next, 0.22, 0.05); // the hop
-        this.musicStep++;
-        next += eighth;
-      }
-    };
-    tick();
-    this.musicTimer = setInterval(tick, 60);
+  // zone -> soundtrack section (Garden / House / Burrow); the change lands on the next bar line
+  setZone(zone) {
+    this.zone = zone;
+    this.music?.setSection(zone === 'surface' ? 'garden' : zone);
   }
 
-  // muffle the music indoors, and more so underground
-  setZone(zone) {
-    const f = { burrow: 650, house: 2600 }[zone] ?? 18000;
-    if (this.musicFilter) this.musicFilter.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.3);
-  }
+  get musicPlaying() { return !!this.music?.playing; }
+  get musicStep() { return this.music?.step ?? 0; }
 
   step() { this.burst(0.05, 0.035, 'bandpass', 900 + Math.random() * 500, 1.2); }
   land() { this.burst(0.12, 0.08, 'lowpass', 500); }

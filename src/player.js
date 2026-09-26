@@ -109,6 +109,7 @@ export class Bunny {
   hop() {
     if (!this.grounded || this.stamina < 0.2 || this.frozen > 0) return false;
     this.stamina -= 0.2;
+    this.hops = (this.hops || 0) + 1;
     this.vy = 3.6;
     const f = this.forward;
     const boost = Math.max(this.speed, 3.4);
@@ -125,13 +126,16 @@ export class Bunny {
       if (input.KeyS || input.ArrowDown) iz += 1;
       if (input.KeyA || input.ArrowLeft) ix -= 1;
       if (input.KeyD || input.ArrowRight) ix += 1;
+      // analog stick (touch joystick): magnitude below 1 means a slower hop
+      const ax = input.axisX || 0, az = input.axisY || 0;
+      if (Math.hypot(ax, az) > 0.12) { ix += ax; iz += az; }
     }
     this.frozen = Math.max(0, this.frozen - dt);
-    const moving = ix !== 0 || iz !== 0;
-    this.crouch = !!(input.KeyC || input.ControlLeft);
-    this.sprinting = !!(input.ShiftLeft || input.ShiftRight) && moving && !this.crouch && this.stamina > 0.02 && iz <= 0;
+    const moving = Math.hypot(ix, iz) > 0.05;
+    this.crouch = !!(input.KeyC || input.ControlLeft || input.touchSneak);
+    this.sprinting = !!(input.ShiftLeft || input.ShiftRight || input.touchSprint) && moving && !this.crouch && this.stamina > 0.02 && iz <= 0;
     const top = this.crouch ? SPEED.sneak : this.sprinting ? SPEED.sprint : SPEED.walk;
-    const len = Math.hypot(ix, iz) || 1;
+    const len = Math.max(1, Math.hypot(ix, iz));
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wx = ((ix * cos + iz * sin) / len) * top, wz = ((-ix * sin + iz * cos) / len) * top;
     const accel = this.grounded ? 14 : 1.5;
