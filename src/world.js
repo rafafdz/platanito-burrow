@@ -258,11 +258,12 @@ export function buildWorld(scene) {
     addBox(x0 - 0.18, x1 + 0.18, z0 - 0.18, z1 + 0.18);
     addBox(-7, -3, -11, -9.6, 0.3);
     addBox(-6, -4, -9.6, -9.1, 0.15);
-    // food bowl on the porch
+    // carrot bowl on the porch
     B.add(cyl(0.13, 0.09, 0.07, 10), 0x4f8fd8, M(BOWL.x, BOWL.y, BOWL.z));
-    for (let i = 0; i < 9; i++) {
-      const aa = i * 2.4, rr = 0.03 + (i % 3) * 0.025;
-      B.add(new THREE.IcosahedronGeometry(0.022, 0), 0x9b5e2c, M(BOWL.x + Math.cos(aa) * rr, BOWL.y + 0.07, BOWL.z + Math.sin(aa) * rr));
+    for (let i = 0; i < 5; i++) {
+      const aa = i * 1.26;
+      B.add(new THREE.ConeGeometry(0.018, 0.12, 5).rotateZ(Math.PI / 2), 0xf08a2c, M(BOWL.x + Math.cos(aa) * 0.04, BOWL.y + 0.08 + i * 0.008, BOWL.z + Math.sin(aa) * 0.04, 0, aa, 0.2));
+      B.add(cone(0.01, 0.06, 3), 0x5fae3f, M(BOWL.x + Math.cos(aa) * 0.1, BOWL.y + 0.08, BOWL.z + Math.sin(aa) * 0.1, 0, 0, -Math.cos(aa) * 0.8));
     }
     // front flower-bed soil
     B.add(box(5.2, 0.05, 0.9), C.soil, M(-9.2, -0.02, -10.5), { cast: false });
@@ -458,7 +459,7 @@ export function buildWorld(scene) {
   for (const [x, z, r, fc] of flowering) shrub(x, z, r, greens[Math.floor(rand() * 4)], fc);
 
   // ---------------------------------------------------------------- burrow entrances
-  // Each entrance is a dirt mound with an arched doorway; the doorway is where the cat
+  // Each entrance is a dirt mound with an arched doorway; the doorway is where the player
   // drops into the generated tunnels (see underground.js).
   const entrances = [];
   const makeSign = (text) => {
@@ -507,7 +508,7 @@ export function buildWorld(scene) {
     addCircle(sx, sz, 0.06);
     addCircle(x - dir.x * 0.2, z - dir.y * 0.2, 0.75, y + 0.38);
     reserved.push({ x, z, r: 2.1 });
-    // where the cat stands to enter, and where it pops back out
+    // where the player stands to enter, and where it pops back out
     const door = new THREE.Vector3(hx + dir.x * 0.35, 0, hz + dir.y * 0.35);
     door.y = groundHeight(door.x, door.z);
     entrances.push({ name, label, x, z, dir: dir.clone(), hole: new THREE.Vector3(hx, hy, hz), door });

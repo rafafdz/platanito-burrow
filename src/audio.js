@@ -145,9 +145,10 @@ export class Sound {
     this.musicTimer = setInterval(tick, 60);
   }
 
-  // muffle the music when underground
-  setUnderground(on) {
-    if (this.musicFilter) this.musicFilter.frequency.setTargetAtTime(on ? 650 : 18000, this.ctx.currentTime, 0.3);
+  // muffle the music indoors, and more so underground
+  setZone(zone) {
+    const f = { burrow: 650, house: 2600 }[zone] ?? 18000;
+    if (this.musicFilter) this.musicFilter.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.3);
   }
 
   step() { this.burst(0.05, 0.035, 'bandpass', 900 + Math.random() * 500, 1.2); }
@@ -162,23 +163,12 @@ export class Sound {
   chime() { [659.25, 783.99, 1046.5].forEach((f, i) => this.tone('sine', f, f, 0.5, 0.12, i * 0.08)); }
   meh() { this.tone('triangle', 330, 250, 0.25, 0.08); }
 
-  meow() {
+  // a rabbit foot-thump: a deep thud with a little dusty rustle
+  thump() {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    const o = this.ctx.createOscillator(); o.type = 'sawtooth';
-    const p = 1 + (Math.random() - 0.5) * 0.2;
-    o.frequency.setValueAtTime(480 * p, t);
-    o.frequency.linearRampToValueAtTime(760 * p, t + 0.18);
-    o.frequency.linearRampToValueAtTime(420 * p, t + 0.55);
-    const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 3;
-    f.frequency.setValueAtTime(900, t); f.frequency.linearRampToValueAtTime(1800, t + 0.2); f.frequency.linearRampToValueAtTime(700, t + 0.55);
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.25, t + 0.06);
-    g.gain.setValueAtTime(0.25, t + 0.35);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-    o.connect(f).connect(g).connect(this.master);
-    o.start(t); o.stop(t + 0.65);
+    this.tone('sine', 120, 45, 0.25, 0.45);
+    this.tone('triangle', 80, 40, 0.18, 0.2);
+    this.burst(0.12, 0.08, 'lowpass', 400);
   }
 
   fanfare() {

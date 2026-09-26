@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Platanito Burrow</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='58' r='34' fill='%23e9a14c'/><path d='M20 40 L26 8 L46 28Z M80 40 L74 8 L54 28Z' fill='%23e9a14c'/></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><ellipse cx='36' cy='26' rx='10' ry='26' fill='%23f7f5f0' stroke='%23222' stroke-width='3'/><ellipse cx='64' cy='26' rx='10' ry='26' fill='%23222'/><circle cx='50' cy='64' r='30' fill='%23f7f5f0' stroke='%23222' stroke-width='3'/><circle cx='64' cy='58' r='9' fill='%23222'/><circle cx='40' cy='60' r='4' fill='%23222'/><circle cx='50' cy='72' r='4' fill='%23f4a3b4'/></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -36,39 +36,39 @@
         <div class="meter"><span>Sniff <kbd>Q</kbd></span><div class="bar sniff"><i id="sniff"></i></div></div>
       </div>
       <div class="panel keys">
-        <span><kbd>E</kbd> dig / burrow</span><span><kbd>Click</kbd> boop</span><span><kbd>Space</kbd> pounce</span><span><kbd>C</kbd> stalk</span><span><kbd>M</kbd> meow</span>
+        <span><kbd>E</kbd> dig / go in</span><span><kbd>Click</kbd> boop</span><span><kbd>Space</kbd> hop</span><span><kbd>C</kbd> sneak</span><span><kbd>T</kbd> thump</span>
       </div>
     </div>
 
     <div id="title" class="overlay">
       <div class="card">
-        <div class="kicker">a sunny-afternoon cat adventure</div>
+        <div class="kicker">a sunny-afternoon bunny adventure</div>
         <h1>Platanito <span>Burrow</span></h1>
         <p class="lede">
-          You are <b>Platanito</b>, a small orange cat with big plans. <b>Ten golden platanitos</b> are hidden around the house:
-          some lie out in the garden, some are buried under soil mounds, and some are deep in the winding tunnels under the lawn.
-          Find all ten.
+          You are <b>Platanito</b>, a small white rabbit with black spots and big plans. <b>Ten golden platanitos</b> are hidden
+          around home: out in the garden, buried under soil mounds, inside the house, and deep in the winding tunnels under the lawn.
+          Hop, dig and sniff until you find all ten.
         </p>
         <div class="controls">
-          <div><kbd>W A S D</kbd><span>prowl</span></div>
+          <div><kbd>W A S D</kbd><span>hop around</span></div>
           <div><kbd>Mouse</kbd><span>look around</span></div>
-          <div><kbd>Shift</kbd><span>zoomies</span></div>
-          <div><kbd>Space</kbd><span>pounce (hop onto beds, benches, rocks)</span></div>
-          <div><kbd>C</kbd><span>stalk low &amp; quiet</span></div>
-          <div><kbd>E</kbd><span>dig · enter / leave the tunnels · snack</span></div>
+          <div><kbd>Shift</kbd><span>bunny zoomies</span></div>
+          <div><kbd>Space</kbd><span>big hop (onto beds, the bench, the sofa)</span></div>
+          <div><kbd>C</kbd><span>sneak low &amp; quiet</span></div>
+          <div><kbd>E</kbd><span>dig · go into the house or tunnels · munch carrots</span></div>
           <div><kbd>Q</kbd><span>sniff toward the nearest platanito</span></div>
-          <div><kbd>Click</kbd><span>boop butterflies, sparrows, the rabbit, the ball</span></div>
-          <div><kbd>M</kbd><span>meow</span></div>
+          <div><kbd>Click</kbd><span>boop butterflies, sparrows, Canela, the ball</span></div>
+          <div><kbd>T</kbd><span>thump your foot</span></div>
         </div>
-        <button id="play">Start prowling</button>
-        <div class="hint">Two burrow holes lead underground: your mound in the south-west corner, and the rabbit hole by the lemon tree.</div>
+        <button id="play">Start hopping</button>
+        <div class="hint">The front door leads into the house. Two burrow holes lead underground: your mound in the south-west corner, and Canela&#39;s hole by the lemon tree.</div>
         <div class="music-note">&#9835; Soundtrack: <b>Rabbit Hop</b>, a bouncy procedural rabbit music loop. It starts when you press Start.</div>
       </div>
     </div>
 
     <div id="pause" class="overlay hidden">
       <div class="card small">
-        <h2>Paws paused</h2>
+        <h2>Hop paused</h2>
         <label class="row">Mouse sensitivity <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" /></label>
         <label class="row">Sound &amp; rabbit music <input id="soundOn" type="checkbox" checked /></label>
         <button id="resume">Back to the garden</button>
@@ -79,7 +79,7 @@
       <div class="card">
         <div class="kicker">burrow complete</div>
         <h1>Nap <span>time.</span></h1>
-        <p class="lede">All ten golden platanitos found, above ground and below. Platanito curls up in the burrow, a warm little loaf in the golden light.</p>
+        <p class="lede">All ten golden platanitos found: garden, house and burrow. Platanito flops over in the burrow, a happy little bunny in the golden light.</p>
         <div class="stats" id="stats"></div>
         <div class="buttons">
           <button id="explore">Keep exploring</button>

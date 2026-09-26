@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { generateTunnels } from '../src/underground.js';
 
 const results = [];
@@ -43,6 +44,17 @@ async function launchBrowser() {
   check('5 underground banana cells', a.bananaCells.length === 5 && new Set(a.bananaCells).size === 5);
 }
 
+// ---------------------------------------------------------------- the player is a rabbit, not a cat
+{
+  const root = new URL('..', import.meta.url);
+  const files = ['index.html', 'README.md', 'src/main.js', 'src/player.js', 'src/entities.js', 'src/audio.js', 'src/world.js', 'src/house.js'];
+  const hits = files.flatMap((f) => {
+    const text = readFileSync(new URL(f, root), 'utf8');
+    return [...text.matchAll(/\b(cats?|kitty|kitten|meow\w*|kibble|feline|purr\w*|pounce\w*|toe beans?)\b/gi)].map((m) => `${f}: ${m[0]}`);
+  });
+  check('no cat presentation left in UI, README or game code', hits.length === 0, hits.slice(0, 6).join(', '));
+}
+
 // ---------------------------------------------------------------- server + HTTP
 const server = await createServer({ root: new URL('..', import.meta.url).pathname, logLevel: 'error', server: { port: 0, host: '127.0.0.1' } });
 await server.listen();
@@ -73,12 +85,14 @@ try {
 
   const d0 = await page.evaluate(() => window.__game.debug());
   check('exactly 10 bananas', d0.bananas.total === 10, `total=${d0.bananas.total}`);
-  check('bananas split 5 surface / 5 burrow', d0.bananas.surface === 5 && d0.bananas.burrow === 5, `${d0.bananas.surface}/${d0.bananas.burrow}`);
+  check('bananas split 4 garden / 1 house / 5 burrow', d0.bananas.surface === 4 && d0.bananas.house === 1 && d0.bananas.burrow === 5, `${d0.bananas.surface}/${d0.bananas.house}/${d0.bananas.burrow}`);
+  check('player is a rabbit (paws + ears in first person)', d0.player.species === 'rabbit' && d0.player.ears === 2 && d0.player.paws === 2, JSON.stringify(d0.player));
+  check('page presents a rabbit', /white rabbit with black spots/i.test(html));
   check('surface has visible and buried bananas', d0.bananas.list.some((b) => b.kind === 'buried') && d0.bananas.list.some((b) => b.zone === 'surface' && b.kind === 'visible'));
   check('HUD starts at 0/10', d0.hud.count === '0/10', d0.hud.count);
   check('at least 2 tunnel entrances', d0.entrances.length >= 2, `entrances=${d0.entrances.length}`);
   check('tunnel exits match entrances', d0.tunnels.exits === d0.entrances.length);
-  check('rabbit is in the garden scene and visible', d0.rabbit.inScene && d0.rabbit.visible);
+  check('NPC Canela is in the garden scene and visible', d0.npc.name === 'Canela' && d0.npc.inScene && d0.npc.visible);
   check('music is gated until Start', d0.music.started === false && d0.music.playing === false);
   check('starts on the surface', d0.zone === 'surface' && d0.hud.zone === 'Surface', d0.hud.zone);
 
@@ -86,30 +100,30 @@ try {
   check('rabbit music plays after Start', d1.music.started && d1.music.playing && !d1.music.muted);
 
   const rab = await page.evaluate(() => {
-    const g = window.__game, before = g.rabbit.group.position.clone();
+    const g = window.__game, before = g.npc.group.position.clone();
     g.step(900);
-    const after = g.rabbit.group.position.clone();
-    // third-person look at the rabbit from 1.6 m away
+    const after = g.npc.group.position.clone();
+    // third-person look at the NPC from 1.6 m away
     g.G.state = 'debug';
     g.camera.position.set(after.x + 1.2, after.y + 0.7, after.z + 1.0);
     g.camera.lookAt(after.x, after.y + 0.15, after.z);
     g.camera.updateMatrixWorld();
     const ndc = after.clone().setY(after.y + 0.15).project(g.camera);
     g.G.state = 'play';
-    return { moved: before.distanceTo(after), hops: g.rabbit.hops, ndc: [ndc.x, ndc.y, ndc.z], homeDist: after.distanceTo(g.rabbit.home) };
+    return { moved: before.distanceTo(after), hops: g.npc.hops, ndc: [ndc.x, ndc.y, ndc.z], homeDist: after.distanceTo(g.npc.home) };
   });
-  check('rabbit wanders (hops and moves)', rab.hops > 0, `hops=${rab.hops} moved=${rab.moved.toFixed(2)}m`);
-  check('rabbit stays near its burrow', rab.homeDist < 5, `${rab.homeDist.toFixed(2)}m from home`);
-  check('rabbit is on-screen in a third-person view', Math.abs(rab.ndc[0]) < 1 && Math.abs(rab.ndc[1]) < 1 && rab.ndc[2] < 1);
+  check('NPC rabbit wanders (hops and moves)', rab.hops > 0, `hops=${rab.hops} moved=${rab.moved.toFixed(2)}m`);
+  check('NPC rabbit stays near its burrow', rab.homeDist < 5, `${rab.homeDist.toFixed(2)}m from home`);
+  check('NPC rabbit is on-screen in a third-person view', Math.abs(rab.ndc[0]) < 1 && Math.abs(rab.ndc[1]) < 1 && rab.ndc[2] < 1);
 
   const enter = await page.evaluate(() => {
     const g = window.__game, e = g.world.entrances[0];
-    g.cat.pos.set(e.door.x, 0, e.door.z);
-    g.cat.feetY = g.world.floorAt(e.door.x, e.door.z, 1);
+    g.player.pos.set(e.door.x, 0, e.door.z);
+    g.player.feetY = g.world.floorAt(e.door.x, e.door.z, 1);
     g.step(2);
     const it = g.currentInteraction();
     g.interact();
-    return { it: it && it.type, d: g.debug(), worldIsUnderground: g.cat.world === g.underground };
+    return { it: it && it.type, d: g.debug(), worldIsUnderground: g.player.world === g.underground };
   });
   check('entrance offers "enter" interaction', enter.it === 'enter', enter.it);
   check('entering switches to the burrow zone', enter.d.zone === 'burrow' && enter.worldIsUnderground);
@@ -122,8 +136,8 @@ try {
     const prev = new Map([[start, -1]]), q = [start];
     while (q.length) { const x = q.shift(); for (const y of L.links[x]) if (!prev.has(y)) { prev.set(y, x); q.push(y); } }
     const path = []; for (let c = goal; c !== -1; c = prev.get(c)) path.unshift(c);
-    // walk it for real with the cat controller and collisions
-    // walk straight into a closed side of the start cell for 2 s: the cat must stay in the cell
+    // walk it for real with the player controller and collisions
+    // walk straight into a closed side of the start cell for 2 s: the player must stay in the cell
     const wallHit = (() => {
       const c = g.underground.center(start);
       const col = start % L.cols, row = Math.floor(start / L.cols);
@@ -132,11 +146,11 @@ try {
         const nc = col + x, nr = row + z;
         return nc < 0 || nr < 0 || nc >= L.cols || nr >= L.rows || !L.links[start].includes(nr * L.cols + nc);
       });
-      g.cat.pos.set(c.x, 0, c.z);
-      g.cat.yaw = Math.atan2(-dx, -dz);
+      g.player.pos.set(c.x, 0, c.z);
+      g.player.yaw = Math.atan2(-dx, -dz);
       g.input.KeyW = true; g.step(120); g.input.KeyW = false; g.step(5);
-      const moved = Math.max(Math.abs(g.cat.pos.x - c.x), Math.abs(g.cat.pos.z - c.z));
-      g.cat.pos.set(c.x, 0, c.z);
+      const moved = Math.max(Math.abs(g.player.pos.x - c.x), Math.abs(g.player.pos.z - c.z));
+      g.player.pos.set(c.x, 0, c.z);
       return moved < 0.62 && moved > 0.3; // walked up to the wall, not through it
     })();
     const before = g.G.collected;
@@ -145,16 +159,16 @@ try {
     for (const cell of path.slice(1)) {
       const t = g.underground.center(cell);
       for (let i = 0; i < 400; i++) {
-        const dx = t.x - g.cat.pos.x, dz = t.z - g.cat.pos.z;
+        const dx = t.x - g.player.pos.x, dz = t.z - g.player.pos.z;
         if (Math.hypot(dx, dz) < 0.25) break;
-        g.cat.yaw = Math.atan2(-dx, -dz);
+        g.player.yaw = Math.atan2(-dx, -dz);
         g.step(1); steps++;
       }
     }
     g.input.KeyW = false;
     g.step(10);
     const end = g.underground.center(goal);
-    return { pathLen: path.length, steps, reached: Math.hypot(end.x - g.cat.pos.x, end.z - g.cat.pos.z) < 0.4, gained: g.G.collected - before, wallHit, d: g.debug() };
+    return { pathLen: path.length, steps, reached: Math.hypot(end.x - g.player.pos.x, end.z - g.player.pos.z) < 0.4, gained: g.G.collected - before, wallHit, d: g.debug() };
   });
   check('walked a winding tunnel path to a dead end', walk.reached, `${walk.pathLen} cells, ${walk.steps} frames`);
   check('tunnel walls block movement', walk.wallHit);
@@ -162,15 +176,41 @@ try {
 
   const exit = await page.evaluate(() => {
     const g = window.__game, ex = g.underground.exits[1];
-    g.cat.pos.set(ex.pos.x, 0, ex.pos.z);
+    g.player.pos.set(ex.pos.x, 0, ex.pos.z);
     g.step(2);
     const it = g.currentInteraction();
     g.interact();
     const e = g.world.entrances[1];
-    return { it: it && it.type, d: g.debug(), dist: Math.hypot(g.cat.pos.x - e.door.x, g.cat.pos.z - e.door.z) };
+    return { it: it && it.type, d: g.debug(), dist: Math.hypot(g.player.pos.x - e.door.x, g.player.pos.z - e.door.z) };
   });
   check('burrow exit offers "exit" interaction', exit.it === 'exit', exit.it);
   check('exiting returns to the surface at the linked entrance', exit.d.zone === 'surface' && exit.d.hud.zone === 'Surface' && exit.dist < 1, `dist=${exit.dist.toFixed(2)}`);
+
+  const houseRun = await page.evaluate(() => {
+    const g = window.__game, door = g.debug().houseDoor;
+    g.player.pos.set(door[0], 0, door[2] + 0.7);
+    g.player.feetY = g.world.floorAt(g.player.pos.x, g.player.pos.z, 1);
+    g.step(2);
+    const it = g.currentInteraction();
+    g.interact();
+    const inside = g.debug();
+    // hop onto the sofa for the platanito: stand between coffee table and sofa, face it, hop forward
+    const before = g.G.collected;
+    g.player.pos.set(-3, 0, -2.2); g.player.feetY = 0; g.player.yaw = 0;
+    g.input.KeyW = true; g.step(5); g.player.hop(); g.step(60); g.input.KeyW = false; g.step(10);
+    const onSofa = g.player.feetY;
+    const gained = g.G.collected - before;
+    // leave through the open front door
+    g.player.pos.set(g.house.exit.pos.x, 0, g.house.exit.pos.z); g.player.feetY = 0;
+    g.step(2);
+    const out = g.currentInteraction();
+    g.interact();
+    return { it: it && it.type, inside, onSofa, gained, out: out && out.type, after: g.debug() };
+  });
+  check('front door offers "go inside"', houseRun.it === 'enterHouse', houseRun.it);
+  check('entering the house switches zone and HUD to House', houseRun.inside.zone === 'house' && houseRun.inside.hud.zone === 'House', houseRun.inside.hud.zone);
+  check('rabbit hops onto the sofa and collects the house platanito', houseRun.gained === 1 && houseRun.onSofa > 0.4, `feetY=${houseRun.onSofa.toFixed(2)}`);
+  check('leaving the house returns to the surface', houseRun.out === 'leaveHouse' && houseRun.after.zone === 'surface' && houseRun.after.hud.zone === 'Surface');
 
   const win = await page.evaluate(() => {
     const g = window.__game, out = [];

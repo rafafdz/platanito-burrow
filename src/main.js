@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { buildWorld, buildFoliage, rng, jitter } from './world.js';
 import { buildUnderground } from './underground.js';
-import { Cat } from './cat.js';
+import { buildHouseInterior } from './house.js';
+import { Bunny } from './player.js';
 import { Birds, Butterflies, Ball, Particles, Rabbit, makeBanana } from './entities.js';
 import { Sound } from './audio.js';
 
@@ -29,16 +30,24 @@ const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerH
 const world = buildWorld(scene);
 const { flowerHeads } = buildFoliage(world);
 const underground = buildUnderground(seed, world.entrances);
-const cat = new Cat(world, camera);
+const house = buildHouseInterior();
+const player = new Bunny(world, camera);
 const birds = new Birds(scene, world, 8);
 const butterflies = new Butterflies(scene, world, flowerHeads, 12);
 const ball = new Ball(scene, world);
-const fxSurface = new Particles(scene);
-const fxBurrow = new Particles(underground.scene);
 const sound = new Sound();
-const rabbitHole = world.entrances[1];
-const rabbit = new Rabbit(scene, world, rabbitHole.door.clone().add(new THREE.Vector3(rabbitHole.dir.x * 1.3, 0, rabbitHole.dir.y * 1.3)));
-const pawLights = cat.pawScene.children.filter((o) => o.isLight).map((l) => ({ l, base: l.intensity }));
+const npcHole = world.entrances[1];
+const npc = new Rabbit(scene, world, npcHole.door.clone().add(new THREE.Vector3(npcHole.dir.x * 1.3, 0, npcHole.dir.y * 1.3)));
+const overlayLights = player.overlay.children.filter((o) => o.isLight).map((l) => ({ l, base: l.intensity }));
+
+// Three explorable zones, each its own scene with its own collision.
+const ZONES = {
+  surface: { label: 'Surface', scene, world, fx: new Particles(scene), light: 1 },
+  house: { label: 'House', scene: house.scene, world: house, fx: new Particles(house.scene), light: 0.85 },
+  burrow: { label: 'Burrow', scene: underground.scene, world: underground, fx: new Particles(underground.scene), light: 0.55 },
+};
+// the cottage's front door, reached from the lawn in front of the porch step
+const HOUSE_DOOR = { pos: new THREE.Vector3(-5, 0, -9.3), out: new THREE.Vector3(-5, 0, -8.55) };
 
 // ---------------------------------------------------------------- dig spots
 const gameRand = rng(seed ^ 0xb4a4a);
@@ -88,19 +97,19 @@ for (const spot of world.digSpots) {
 }
 
 // ---------------------------------------------------------------- golden platanitos
-// 5 on the surface (3 lying out in the open, 2 buried under mounds) + 5 in the tunnels.
+// Garden: 2 in the open + 2 buried under mounds. House: 1 on the sofa. Tunnels: 5.
 const bananas = [];
 function addBanana(zone, kind, pos, where, spot = null) {
   const mesh = makeBanana();
   mesh.position.copy(pos);
   mesh.visible = kind !== 'buried';
-  (zone === 'surface' ? scene : underground.scene).add(mesh);
+  ZONES[zone].scene.add(mesh);
   const b = { id: bananas.length, zone, kind, pos: pos.clone(), where, mesh, spot, collected: false, reveal: 0 };
   if (spot) spot.banana = b;
   bananas.push(b);
 }
 const LIFT = 0.22;
-for (const [x, z, where, top] of [[4, 10, 'on the bench', 0.46], [5.6, 6.6, 'by the pond', null], [18.3, -17.3, 'behind the shed', null]]) {
+for (const [x, z, where, top] of [[4, 10, 'on the bench', 0.46], [5.6, 6.6, 'by the pond', null]]) {
   addBanana('surface', 'visible', new THREE.Vector3(x, (top ?? world.groundHeight(x, z)) + LIFT, z), where);
 }
 {
@@ -110,32 +119,36 @@ for (const [x, z, where, top] of [[4, 10, 'on the bench', 0.46], [5.6, 6.6, 'by 
     addBanana('surface', 'buried', new THREE.Vector3(s.x, s.y + LIFT, s.z), 'under a mound', s);
   }
 }
+addBanana('house', 'visible', house.bananaSpot.clone().setY(house.bananaSpot.y + LIFT), 'on the sofa');
 underground.bananaSpots.forEach((p) => addBanana('burrow', 'visible', new THREE.Vector3(p.x, LIFT, p.z), 'deep in the tunnels'));
 if (bananas.length !== BANANA_TOTAL) throw new Error(`expected ${BANANA_TOTAL} bananas, placed ${bananas.length}`);
 
 // ---------------------------------------------------------------- state & HUD
 const G = {
-  state: 'title', zone: 'surface', collected: 0, dug: 0, bf: 0, birds: 0, rabbitBoops: 0, time: 0, sniffCD: 0,
-  digging: null, dayK: 0, dayTarget: 0, won: false, lookDrag: false, noLock: false, tunnelVisits: 0,
+  state: 'title', zone: 'surface', collected: 0, dug: 0, bf: 0, birds: 0, npcBoops: 0, time: 0, sniffCD: 0,
+  digging: null, dayK: 0, dayTarget: 0, won: false, lookDrag: false, noLock: false, tunnelVisits: 0, houseVisits: 0,
 };
 const $ = (id) => document.getElementById(id);
-const fx = () => (G.zone === 'burrow' ? fxBurrow : fxSurface);
-const activeWorld = () => (G.zone === 'burrow' ? underground : world);
+const Z = () => ZONES[G.zone];
 const countBy = (zone, collected) => bananas.filter((b) => b.zone === zone && (collected === undefined || b.collected === collected)).length;
 
 function hud() {
   $('bananaCount').textContent = `${G.collected}/${BANANA_TOTAL}`;
-  $('bananaSplit').textContent = `Surface ${countBy('surface', true)}/${countBy('surface')} · Burrow ${countBy('burrow', true)}/${countBy('burrow')}`;
+  $('bananaSplit').textContent = ['surface', 'house', 'burrow']
+    .map((z) => `${z === 'surface' ? 'Garden' : ZONES[z].label} ${countBy(z, true)}/${countBy(z)}`).join(' · ');
   const zone = $('zone');
-  zone.textContent = G.zone === 'burrow' ? 'Burrow' : 'Surface';
+  zone.textContent = Z().label;
   zone.className = `panel zone ${G.zone}`;
   $('bfCount').textContent = G.bf;
   $('birdCount').textContent = G.birds;
+  const left = countBy(G.zone, false);
   $('objective').innerHTML = G.won
     ? 'All ten found. <b>Enjoy the golden hour.</b>'
     : G.zone === 'burrow'
-      ? `Explore the tunnels · <b>${countBy('burrow', false)}</b> platanitos left down here`
-      : `Find the golden platanitos · <b>${G.collected}/${BANANA_TOTAL}</b>`;
+      ? `Explore the tunnels · <b>${left}</b> platanitos left down here`
+      : G.zone === 'house'
+        ? `Inside the house · <b>${left}</b> platanito${left === 1 ? '' : 's'} left in here`
+        : `Find the golden platanitos · <b>${G.collected}/${BANANA_TOTAL}</b>`;
 }
 
 let toastTimer;
@@ -156,10 +169,10 @@ addEventListener('keydown', (e) => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
   input[e.code] = true;
   if (e.repeat || !playing()) return;
-  if (e.code === 'Space' && cat.pounce()) sound.whoosh();
+  if (e.code === 'Space' && player.hop()) sound.whoosh();
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ') sniff();
-  if (e.code === 'KeyM') meow();
+  if (e.code === 'KeyT') thump();
 });
 addEventListener('keyup', (e) => { input[e.code] = false; });
 addEventListener('blur', () => { for (const k in input) input[k] = false; });
@@ -168,12 +181,12 @@ const locked = () => document.pointerLockElement === canvas;
 const playing = () => G.state === 'play';
 addEventListener('mousemove', (e) => {
   if (!playing()) return;
-  if (locked() || G.lookDrag) cat.look(e.movementX, e.movementY);
+  if (locked() || G.lookDrag) player.look(e.movementX, e.movementY);
 });
 canvas.addEventListener('mousedown', (e) => {
   if (!playing()) return;
   if (!locked() && G.noLock) G.lookDrag = true;
-  if (e.button === 0) swipe();
+  if (e.button === 0) boop();
 });
 addEventListener('mouseup', () => { G.lookDrag = false; });
 
@@ -185,7 +198,7 @@ function startPlay() {
   ['title', 'pause', 'end'].forEach((id) => $(id).classList.add('hidden'));
   $('hud').classList.remove('hidden');
   hud();
-  if (first) setTimeout(() => toast('Ten golden platanitos are hidden around here.', 'Some lie in the garden, some are buried, and some are deep in the tunnels. Press E at a burrow hole to go underground.', 5600), 500);
+  if (first) setTimeout(() => toast('Ten golden platanitos are hidden around here.', 'In the garden, inside the house, and deep in the tunnels. Press E at the front door or a burrow hole to go in.', 5600), 500);
 }
 
 function requestLock() {
@@ -209,7 +222,7 @@ $('play').addEventListener('click', requestLock);
 $('resume').addEventListener('click', () => (G.noLock ? startPlay() : requestLock()));
 $('explore').addEventListener('click', () => (G.noLock ? startPlay() : requestLock()));
 $('again').addEventListener('click', () => location.reload());
-$('sens').addEventListener('input', (e) => { cat.sensitivity = parseFloat(e.target.value); });
+$('sens').addEventListener('input', (e) => { player.sensitivity = parseFloat(e.target.value); });
 $('soundOn').addEventListener('change', (e) => sound.setMuted(!e.target.checked));
 addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && G.noLock && G.state === 'play') { G.state = 'paused'; $('pause').classList.remove('hidden'); }
@@ -222,42 +235,51 @@ function fade() {
   setTimeout(() => f.classList.remove('on'), 260);
 }
 
+function moveTo(zone, pos, yaw) {
+  G.zone = zone;
+  G.digging = null;
+  player.world = ZONES[zone].world;
+  player.pos.set(pos.x, 0, pos.z);
+  player.feetY = player.world.floorAt(pos.x, pos.z, 1);
+  player.vy = 0; player.vel.set(0, 0, 0);
+  player.yaw = yaw; player.pitch = 0;
+  for (const { l, base } of overlayLights) l.intensity = base * ZONES[zone].light;
+  sound.setZone(zone);
+  fade(); hud();
+}
+
 function enterBurrow(i) {
   const ex = underground.exits[i];
-  G.zone = 'burrow';
-  G.digging = null;
   G.tunnelVisits++;
-  cat.world = underground;
-  cat.pos.set(ex.spawn.x, 0, ex.spawn.z);
-  cat.feetY = 0; cat.vy = 0; cat.vel.set(0, 0, 0);
-  cat.yaw = ex.yaw; cat.pitch = 0;
-  for (const { l, base } of pawLights) l.intensity = base * 0.55;
-  sound.setUnderground(true);
-  fade(); hud();
+  moveTo('burrow', ex.spawn, ex.yaw);
   toast(`Into ${world.entrances[i].name}…`, 'The tunnels twist and branch. Stand in a shaft of daylight and press E to climb out.', 3600);
 }
 
 function exitBurrow(i) {
   const en = world.entrances[i];
-  G.zone = 'surface';
-  cat.world = world;
-  const x = en.door.x + en.dir.x * 0.45, z = en.door.z + en.dir.y * 0.45;
-  cat.pos.set(x, 0, z);
-  cat.feetY = world.floorAt(x, z, 1); cat.vy = 0; cat.vel.set(0, 0, 0);
-  cat.yaw = Math.atan2(-en.dir.x, -en.dir.y); cat.pitch = 0;
-  for (const { l, base } of pawLights) l.intensity = base;
-  sound.setUnderground(false);
-  fade(); hud();
+  moveTo('surface', new THREE.Vector3(en.door.x + en.dir.x * 0.45, 0, en.door.z + en.dir.y * 0.45), Math.atan2(-en.dir.x, -en.dir.y));
   toast('Back in the sunshine.', `You pop out of ${en.name}.`, 2200);
+}
+
+function enterHouse() {
+  G.houseVisits++;
+  moveTo('house', house.spawn, 0);
+  toast('Inside the house.', 'Cosy. Hop onto the furniture to look around. The open door leads back out.', 3200);
+}
+
+function exitHouse() {
+  moveTo('surface', HOUSE_DOOR.out, Math.PI);
+  toast('Back in the garden.', '', 1600);
 }
 
 // ---------------------------------------------------------------- actions
 const tmp = new THREE.Vector3();
 const lookDir = () => camera.getWorldDirection(new THREE.Vector3());
 
-function swipe() {
-  if (cat.swipeT > 0 || G.digging) return;
-  cat.swipeT = 0.32;
+// click: a gentle paw boop
+function boop() {
+  if (player.boopT > 0 || G.digging) return;
+  player.boopT = 0.32;
   if (G.zone !== 'surface') { sound.whoosh(); return; }
   const dir = lookDir(), eye = camera.position;
   for (const b of butterflies.list) {
@@ -265,18 +287,18 @@ function swipe() {
     tmp.subVectors(b.group.position, eye);
     if (tmp.length() < 1.0 && tmp.normalize().dot(dir) > 0.55) {
       butterflies.boop(b, eye);
-      G.bf++; sound.boop(); fxSurface.sparkle(b.group.position, 0xfff2a8, 10);
+      G.bf++; sound.boop(); ZONES.surface.fx.sparkle(b.group.position, 0xfff2a8, 10);
       toast('Boop!', ['The butterfly is fine. Delighted, even.', 'Soft paw, zero regrets.', 'It flutters off, giggling.'][G.bf % 3], 1800);
       hud();
       return;
     }
   }
-  tmp.subVectors(rabbit.group.position, eye);
+  tmp.subVectors(npc.group.position, eye);
   if (Math.hypot(tmp.x, tmp.z) < 1.2 && tmp.setY(0).normalize().dot(dir.clone().setY(0).normalize()) > 0.5) {
-    G.rabbitBoops++; rabbit.booped++; sound.boop();
-    fxSurface.sparkle(rabbit.group.position.clone().add(new THREE.Vector3(0, 0.3, 0)), 0xffffff, 12);
-    toast('Boop! The rabbit thumps a happy foot.', 'It hops off, but it seems to like you.', 2200);
-    rabbit.timer = 0;
+    G.npcBoops++; npc.booped++; sound.boop();
+    ZONES.surface.fx.sparkle(npc.group.position.clone().add(new THREE.Vector3(0, 0.3, 0)), 0xffffff, 12);
+    toast('Nose boop with Canela!', 'Your lop-eared neighbour flicks her ears and hops off, pleased.', 2400);
+    npc.timer = 0;
     return;
   }
   for (const b of birds.list) {
@@ -285,15 +307,15 @@ function swipe() {
     const flat = Math.hypot(tmp.x, tmp.z);
     if (flat < 1.15 && Math.abs(tmp.y) < 0.6 && tmp.setY(0).normalize().dot(dir.clone().setY(0).normalize()) > 0.5) {
       birds.startle(b);
-      G.birds++; sound.tweet(); sound.boop(); fxSurface.sparkle(b.group.position, 0xffffff, 10);
-      toast('Sparrow booped!', 'It is scandalised, but unharmed. Stealth pays off.', 2200);
+      G.birds++; sound.tweet(); sound.boop(); ZONES.surface.fx.sparkle(b.group.position, 0xffffff, 10);
+      toast('Sparrow booped!', 'It is scandalised, but unharmed. Sneaking pays off.', 2200);
       hud();
       return;
     }
   }
   tmp.subVectors(ball.pos, eye);
   if (tmp.length() < 0.9 && tmp.normalize().dot(dir) > 0.4) {
-    const f = cat.forward;
+    const f = player.forward;
     ball.vel.set(f.x * 5.5, 0, f.z * 5.5);
     sound.boop();
     return;
@@ -305,7 +327,7 @@ function nearest(list, maxD, get = (s) => s) {
   let best = null, bd = maxD;
   for (const s of list) {
     const p = get(s);
-    const d = Math.hypot(p.x - cat.pos.x, p.z - cat.pos.z);
+    const d = Math.hypot(p.x - player.pos.x, p.z - player.pos.z);
     if (d < bd) { bd = d; best = s; }
   }
   return best;
@@ -317,10 +339,14 @@ function currentInteraction() {
     const ex = nearest(underground.exits, 0.8, (e) => e.pos);
     return ex ? { type: 'exit', index: ex.index, text: `Climb out to ${world.entrances[ex.index].name}` } : null;
   }
-  if (Math.hypot(-3.7 - cat.pos.x, -10.15 - cat.pos.z) < 0.7) return { type: 'bowl', text: 'Crunch some kibble' };
+  if (G.zone === 'house') {
+    return nearest([house.exit], 0.9, (e) => e.pos) ? { type: 'leaveHouse', text: 'Go back out to the garden' } : null;
+  }
+  if (Math.hypot(-3.7 - player.pos.x, -10.15 - player.pos.z) < 0.7) return { type: 'bowl', text: 'Munch some carrots' };
+  if (nearest([HOUSE_DOOR], 1.0, (d) => d.pos)) return { type: 'enterHouse', text: 'Go inside the house' };
   const en = nearest(world.entrances, 0.85, (e) => e.door);
-  if (en) return { type: 'enter', index: world.entrances.indexOf(en), text: `Crawl into ${en.name}` };
-  const spot = nearest(world.digSpots.filter((s) => !s.dug && Math.abs(s.y - cat.feetY) < 0.2), 0.75);
+  if (en) return { type: 'enter', index: world.entrances.indexOf(en), text: `Hop into ${en.name}` };
+  const spot = nearest(world.digSpots.filter((s) => !s.dug && Math.abs(s.y - player.feetY) < 0.2), 0.75);
   if (spot) return { type: 'dig', text: 'Dig', spot };
   return null;
 }
@@ -330,13 +356,15 @@ function interact() {
   if (!it) return;
   if (it.type === 'dig') {
     G.digging = { spot: it.spot, t: 0, next: 0 };
-    cat.frozen = 1.15; cat.digT = 1.15;
-    cat.vel.set(0, 0, 0);
+    player.frozen = 1.15; player.digT = 1.15;
+    player.vel.set(0, 0, 0);
   } else if (it.type === 'enter') enterBurrow(it.index);
   else if (it.type === 'exit') exitBurrow(it.index);
+  else if (it.type === 'enterHouse') enterHouse();
+  else if (it.type === 'leaveHouse') exitHouse();
   else if (it.type === 'bowl') {
-    cat.stamina = 1; sound.crunch();
-    toast('Crunch crunch.', 'Stamina fully restored. Zoomies authorised.', 2200);
+    player.stamina = 1; sound.crunch();
+    toast('Munch munch.', 'Fresh carrots. Stamina fully restored.', 2200);
   }
 }
 
@@ -345,7 +373,7 @@ const EMPTY_LINES = [
   ['A bottle cap.', 'Not a platanito. Standards matter.'],
   ['Dirt.', 'Premium dirt, sure. But still dirt.'],
   ['A beetle waves at you.', 'You wave back. Nothing else here.'],
-  ['An old carrot end.', 'The rabbit must have been here.'],
+  ['An old carrot end.', 'Canela must have been here first.'],
   ['Nothing.', 'Only the faint smell of Tuesday.'],
 ];
 
@@ -357,7 +385,7 @@ function finishDig(spot) {
     b.mesh.visible = true;
     b.reveal = 0.8; // pops up out of the hole, then drops into your collection
     sound.chime();
-    fxSurface.sparkle(b.pos);
+    ZONES.surface.fx.sparkle(b.pos);
     toast('A buried golden platanito!', 'Dug up fresh and still shiny.', 2400);
   } else {
     const [a, b] = EMPTY_LINES[G.dug % EMPTY_LINES.length];
@@ -373,7 +401,7 @@ function collect(b) {
   b.mesh.visible = false;
   G.collected++;
   sound.collect();
-  (b.zone === 'burrow' ? fxBurrow : fxSurface).sparkle(b.pos, 0xffe36b, 18);
+  ZONES[b.zone].fx.sparkle(b.pos, 0xffe36b, 18);
   const left = BANANA_TOTAL - G.collected;
   if (left > 0) toast(`Golden platanito! (${G.collected}/${BANANA_TOTAL})`, left === 1 ? 'Just one more somewhere…' : `Found ${b.where}.`, 2600);
   hud();
@@ -386,14 +414,14 @@ function win() {
   G.dayTarget = 1;
   setTimeout(() => {
     sound.fanfare();
-    toast('All ten golden platanitos!', 'Platanito does a very proud slow blink.', 3500);
+    toast('All ten golden platanitos!', 'Platanito does a very happy binky.', 3500);
   }, 600);
   setTimeout(() => {
     $('stats').innerHTML = `
       <div><b>${fmt(G.time)}</b><span>time</span></div>
       <div><b>${G.dug}</b><span>holes dug</span></div>
-      <div><b>${G.tunnelVisits}</b><span>tunnel trips</span></div>
-      <div><b>${G.bf + G.birds + G.rabbitBoops}</b><span>boops</span></div>`;
+      <div><b>${G.tunnelVisits + G.houseVisits}</b><span>trips inside</span></div>
+      <div><b>${G.bf + G.birds + G.npcBoops}</b><span>boops</span></div>`;
     G.state = 'won';
     if (locked()) document.exitPointerLock();
     $('end').classList.remove('hidden');
@@ -401,6 +429,7 @@ function win() {
   }, 3600);
 }
 
+// Q: the sniff trail leads to the nearest banana in this zone, or to the way into a zone that still has some
 function sniff() {
   if (G.sniffCD > 0 || G.digging) return;
   G.sniffCD = 6;
@@ -412,26 +441,37 @@ function sniff() {
     target = nearest(here, 999, (b) => b.pos).pos;
     line = 'Something golden is that way.';
   } else if (left.length) {
-    target = G.zone === 'surface' ? nearest(world.entrances, 999, (e) => e.door).door : nearest(underground.exits, 999, (e) => e.pos).pos;
-    line = G.zone === 'surface' ? 'The scent leads underground…' : 'Nothing left down here. Daylight is that way.';
+    if (G.zone === 'surface') {
+      const portals = [
+        ...(countBy('burrow', false) ? world.entrances.map((e) => e.door) : []),
+        ...(countBy('house', false) ? [HOUSE_DOOR.pos] : []),
+      ];
+      target = nearest(portals, 999);
+      line = 'The scent leads inside…';
+    } else {
+      target = G.zone === 'house' ? house.exit.pos : nearest(underground.exits, 999, (e) => e.pos).pos;
+      line = 'Nothing left in here. The way out is that way.';
+    }
   }
   if (!target) return;
-  const aw = activeWorld();
-  const from = new THREE.Vector3(cat.pos.x, cat.feetY, cat.pos.z).addScaledVector(cat.forward, 0.4);
-  fx().trail(from, target, (x, z) => aw.floorAt(x, z, 5));
+  const w = Z().world;
+  const from = new THREE.Vector3(player.pos.x, player.feetY, player.pos.z).addScaledVector(player.forward, 0.4);
+  Z().fx.trail(from, target, (x, z) => w.floorAt(x, z, 5));
   toast('*sniff sniff*', line, 2000);
 }
 
-function meow() {
-  sound.meow();
+// T: a foot-thump, the rabbit way of making the whole garden pay attention
+function thump() {
+  sound.thump();
+  player.thumpT = 0.3;
   let scared = 0;
   if (G.zone === 'surface') {
     for (const b of birds.list) {
       if (b.state === 'ground' && b.group.position.distanceTo(camera.position) < 7) { birds.startle(b); scared++; }
     }
   }
-  const echo = G.zone === 'burrow' ? 'It echoes down the tunnels.' : scared ? 'The sparrows did not appreciate that.' : '';
-  toast(['Mrrrp!', 'Meow.', 'MRAOW!', 'mew?'][Math.floor(Math.random() * 4)], echo, 1500);
+  const line = G.zone === 'burrow' ? 'It echoes down the tunnels.' : G.zone === 'house' ? 'The floorboards rattle.' : scared ? 'The sparrows scatter.' : 'The ground goes thud.';
+  toast('*THUMP*', line, 1500);
 }
 
 // ---------------------------------------------------------------- loop
@@ -443,14 +483,14 @@ function update(dt) {
   t += dt;
   if (G.state === 'play') {
     G.time += dt;
-    cat.update(dt, input, sound);
+    player.update(dt, input, sound);
     G.sniffCD = Math.max(0, G.sniffCD - dt);
     if (G.digging) {
       const d = G.digging;
       d.t += dt; d.next -= dt;
       if (d.next <= 0) {
         d.next = 0.14;
-        fxSurface.dirtBurst(new THREE.Vector3(d.spot.x, d.spot.y + 0.08, d.spot.z), cat.forward, 4);
+        ZONES.surface.fx.dirtBurst(new THREE.Vector3(d.spot.x, d.spot.y + 0.08, d.spot.z), player.forward, 4);
         if (Math.random() < 0.6) sound.dig();
         d.spot.visual.mound.scale.y = Math.max(0.2, 1 - d.t);
       }
@@ -460,8 +500,8 @@ function update(dt) {
     const pr = $('prompt');
     if (it) { pr.innerHTML = `<kbd>E</kbd>${it.text}`; pr.classList.add('show'); }
     else pr.classList.remove('show');
-    document.body.classList.toggle('stalking', cat.crouch);
-    $('stamina').style.width = `${cat.stamina * 100}%`;
+    document.body.classList.toggle('sneaking', player.crouch);
+    $('stamina').style.width = `${player.stamina * 100}%`;
     $('sniff').style.width = `${(1 - G.sniffCD / 6) * 100}%`;
     $('clock').textContent = fmt(G.time);
     if (!G.won) G.dayTarget = Math.min(0.75, G.time / 600);
@@ -471,7 +511,7 @@ function update(dt) {
     camera.lookAt(-3 + Math.cos(a + 0.6) * 2, 0.9, 1 + Math.sin(a + 0.6) * 2);
   }
 
-  // bananas: spin, bob, and get collected by walking into them
+  // bananas: spin, bob, and get collected by hopping into them
   for (const b of bananas) {
     if (b.collected || !b.mesh.visible) continue;
     b.mesh.rotation.y += dt * 1.8;
@@ -484,17 +524,16 @@ function update(dt) {
       continue;
     }
     if (G.state !== 'play' || b.zone !== G.zone || b.kind === 'buried') continue;
-    const d = Math.hypot(b.pos.x - cat.pos.x, b.pos.z - cat.pos.z);
-    if (d < 0.42 && Math.abs(cat.feetY + 0.15 - b.pos.y) < 0.45) collect(b);
+    const d = Math.hypot(b.pos.x - player.pos.x, b.pos.z - player.pos.z);
+    if (d < 0.42 && Math.abs(player.feetY + 0.15 - b.pos.y) < 0.45) collect(b);
   }
 
   const onSurface = (G.state === 'play' || G.state === 'won') && G.zone === 'surface';
-  birds.update(dt, t, onSurface ? cat : far, () => { if (onSurface) sound.tweet(); });
+  birds.update(dt, t, onSurface ? player : far, () => { if (onSurface) sound.tweet(); });
   butterflies.update(dt, t);
-  rabbit.update(dt, t, onSurface ? cat : null);
-  ball.update(dt, G.state === 'play' && G.zone === 'surface' ? cat : far);
-  fxSurface.update(dt, t);
-  fxBurrow.update(dt, t);
+  npc.update(dt, t, onSurface ? player : null);
+  ball.update(dt, G.state === 'play' && G.zone === 'surface' ? player : far);
+  for (const z of Object.values(ZONES)) z.fx.update(dt, t);
 
   G.dayK += (G.dayTarget - G.dayK) * Math.min(1, dt * (G.won ? 0.6 : 0.2));
   world.setDaylight(G.dayK);
@@ -508,8 +547,8 @@ function frame() {
   last = now;
   update(dt);
   renderer.clear();
-  renderer.render(G.zone === 'burrow' ? underground.scene : scene, camera);
-  if (G.state === 'play' || G.state === 'paused') cat.renderOverlay(renderer);
+  renderer.render(Z().scene, camera);
+  if (G.state === 'play' || G.state === 'paused') player.renderOverlay(renderer);
   requestAnimationFrame(frame);
 }
 
@@ -525,26 +564,30 @@ frame();
 // ---------------------------------------------------------------- debug / test hook
 function debug() {
   const L = underground.layout;
+  const round = (v) => v.toArray().map((n) => +n.toFixed(2));
   return {
     seed,
     state: G.state,
     zone: G.zone,
     hud: { zone: $('zone').textContent, count: $('bananaCount').textContent, split: $('bananaSplit').textContent },
+    player: { species: player.species, ears: player.ears.length, paws: player.paws.length, pos: [+player.pos.x.toFixed(2), +player.feetY.toFixed(2), +player.pos.z.toFixed(2)] },
     bananas: {
       total: bananas.length,
       collected: G.collected,
       surface: countBy('surface'),
+      house: countBy('house'),
       burrow: countBy('burrow'),
-      list: bananas.map((b) => ({ id: b.id, zone: b.zone, kind: b.kind, where: b.where, collected: b.collected, pos: b.pos.toArray().map((v) => +v.toFixed(2)) })),
+      list: bananas.map((b) => ({ id: b.id, zone: b.zone, kind: b.kind, where: b.where, collected: b.collected, pos: round(b.pos) })),
     },
-    entrances: world.entrances.map((e) => ({ name: e.name, door: e.door.toArray().map((v) => +v.toFixed(2)) })),
+    entrances: world.entrances.map((e) => ({ name: e.name, door: round(e.door) })),
+    houseDoor: round(HOUSE_DOOR.pos),
     tunnels: {
       cols: L.cols, rows: L.rows, cells: L.cols * L.rows, connected: L.connected, junctions: L.junctions,
       deadEnds: L.deadEnds, longestPath: L.longestPath, exits: underground.exits.length, bananaCells: L.bananaCells,
     },
-    rabbit: {
-      inScene: rabbit.group.parent === scene, visible: rabbit.group.visible, pos: rabbit.group.position.toArray().map((v) => +v.toFixed(2)),
-      home: rabbit.home.toArray().map((v) => +v.toFixed(2)), hops: rabbit.hops, state: rabbit.state,
+    npc: {
+      name: npc.name, inScene: npc.group.parent === scene, visible: npc.group.visible, pos: round(npc.group.position),
+      home: round(npc.home), hops: npc.hops, state: npc.state,
     },
     music: { started: !!sound.ctx, playing: sound.musicPlaying, muted: sound.muted, step: sound.musicStep ?? 0 },
     won: G.won,
@@ -553,6 +596,6 @@ function debug() {
 
 window.__game = {
   step: (n = 60) => { for (let i = 0; i < n; i++) update(1 / 60); },
-  debug, seed, BANANA_TOTAL, renderer, G, cat, world, underground, bananas, rabbit, sound, birds, butterflies, ball, camera,
-  startPlay, interact, sniff, swipe, meow, input, enterBurrow, exitBurrow, collect, finishDig, currentInteraction,
+  debug, seed, BANANA_TOTAL, renderer, G, player, world, underground, house, bananas, npc, sound, birds, butterflies, ball, camera,
+  startPlay, interact, sniff, boop, thump, input, enterBurrow, exitBurrow, enterHouse, exitHouse, collect, finishDig, currentInteraction,
 };

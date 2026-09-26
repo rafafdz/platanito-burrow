@@ -52,63 +52,58 @@ export function makeBanana() {
 // ---------------------------------------------------------------------------
 // The rabbit: white, black-spotted, lives by the rabbit hole and wanders about
 // ---------------------------------------------------------------------------
+// Canela, the neighbour: a cinnamon lop-eared rabbit. Deliberately nothing like the
+// player (Platanito is white with black spots and upright ears), so she's easy to tell apart.
 export class Rabbit {
   constructor(scene, world, home) {
+    this.name = 'Canela';
     this.world = world;
     this.home = home.clone();
     this.rand = rng(314);
-    const white = std(0xfaf8f2, { roughness: 0.9 });
-    const black = std(0x1d1b1a, { roughness: 0.9 });
+    const coat = std(0xb8784a, { roughness: 0.9 });
+    const cream = std(0xf1e2c6, { roughness: 0.9 });
+    const dark = std(0x8a5530, { roughness: 0.9 });
     const pink = std(0xf4a3b4);
     const g = (this.group = new THREE.Group());
-    g.name = 'rabbit';
-    const body = mesh(new THREE.IcosahedronGeometry(0.16, 1), white, 0, 0.15, -0.02);
+    g.name = 'canela';
+    const body = mesh(new THREE.IcosahedronGeometry(0.16, 1), coat, 0, 0.15, -0.02);
     body.scale.set(0.95, 0.85, 1.25);
     g.add(body);
+    const chest = mesh(new THREE.IcosahedronGeometry(0.1, 1), cream, 0, 0.13, 0.1);
+    chest.scale.set(0.9, 1, 0.8);
+    g.add(chest);
     for (const sx of [-1, 1]) {
-      const haunch = mesh(new THREE.IcosahedronGeometry(0.09, 1), white, sx * 0.1, 0.1, -0.1);
-      g.add(haunch);
-      g.add(mesh(new THREE.BoxGeometry(0.05, 0.03, 0.13), white, sx * 0.1, 0.015, -0.06));
-      g.add(mesh(new THREE.IcosahedronGeometry(0.03, 0), white, sx * 0.06, 0.03, 0.13));
-    }
-    // black spots, sat just outside the body ellipsoid
-    const spots = [[0.9, 0.5, -0.2, 0.06], [-0.7, 0.7, 0.1, 0.05], [0.1, 0.95, -0.4, 0.07], [-0.5, 0.3, -0.75, 0.05], [0.6, 0.2, 0.55, 0.04]];
-    for (const [nx, ny, nz, r] of spots) {
-      const n = new THREE.Vector3(nx, ny, nz).normalize();
-      const spot = mesh(new THREE.IcosahedronGeometry(r, 0), black, n.x * 0.152, 0.15 + n.y * 0.136, -0.02 + n.z * 0.2);
-      spot.scale.set(1, 0.45, 1);
-      spot.lookAt(spot.position.clone().add(n));
-      spot.rotateX(Math.PI / 2);
-      g.add(spot);
+      g.add(mesh(new THREE.IcosahedronGeometry(0.09, 1), coat, sx * 0.1, 0.1, -0.1));
+      g.add(mesh(new THREE.BoxGeometry(0.05, 0.03, 0.13), cream, sx * 0.1, 0.015, -0.06));
+      g.add(mesh(new THREE.IcosahedronGeometry(0.03, 0), cream, sx * 0.06, 0.03, 0.13));
     }
     const head = (this.head = new THREE.Group());
     head.position.set(0, 0.27, 0.15);
     g.add(head);
-    const skull = mesh(new THREE.IcosahedronGeometry(0.095, 1), white);
-    skull.scale.set(1, 0.92, 1.05);
+    const skull = mesh(new THREE.IcosahedronGeometry(0.095, 1), coat);
+    skull.scale.set(1.05, 0.9, 1.05);
     head.add(skull);
-    const patch = mesh(new THREE.IcosahedronGeometry(0.045, 0), black, 0.05, 0.02, 0.06);
-    patch.scale.set(1, 1, 0.4);
-    patch.lookAt(0.6, 0.2, 1);
-    head.add(patch);
+    const muzzle = mesh(new THREE.IcosahedronGeometry(0.045, 1), cream, 0, -0.03, 0.07);
+    muzzle.scale.set(1.1, 0.8, 0.8);
+    head.add(muzzle);
     for (const sx of [-1, 1]) head.add(mesh(new THREE.IcosahedronGeometry(0.018, 0), std(0x111111, { roughness: 0.2 }), sx * 0.06, 0.025, 0.07));
-    head.add(mesh(new THREE.IcosahedronGeometry(0.016, 0), pink, 0, -0.01, 0.1));
-    for (const sx of [-1, 1]) head.add(mesh(new THREE.BoxGeometry(0.03, 0.004, 0.004), std(0xdddddd), sx * 0.035, -0.02, 0.095));
+    head.add(mesh(new THREE.IcosahedronGeometry(0.016, 0), pink, 0, -0.01, 0.105));
+    // lop ears hang down beside the face
     this.ears = [];
     for (const sx of [-1, 1]) {
       const pivot = new THREE.Group();
-      pivot.position.set(sx * 0.04, 0.07, -0.02);
-      const ear = mesh(new THREE.IcosahedronGeometry(0.045, 1), sx > 0 ? black : white, 0, 0.12, 0);
-      ear.scale.set(0.6, 2.6, 0.3);
+      pivot.position.set(sx * 0.07, 0.06, -0.02);
+      const ear = mesh(new THREE.IcosahedronGeometry(0.045, 1), dark, 0, 0.11, 0);
+      ear.scale.set(0.75, 2.4, 0.35);
       pivot.add(ear);
-      const inner = mesh(new THREE.IcosahedronGeometry(0.03, 0), pink, 0, 0.12, 0.012);
-      inner.scale.set(0.55, 2.8, 0.2);
-      pivot.add(inner);
-      pivot.rotation.set(-0.2, 0, sx * 0.2);
+      pivot.rotation.set(0, 0, sx * 2.6);
       head.add(pivot);
       this.ears.push(pivot);
     }
-    g.add(mesh(new THREE.IcosahedronGeometry(0.055, 0), white, 0, 0.17, -0.22));
+    // a little daisy behind one ear
+    head.add(mesh(new THREE.IcosahedronGeometry(0.025, 0), std(0xffffff), -0.06, 0.08, -0.03));
+    head.add(mesh(new THREE.IcosahedronGeometry(0.012, 0), std(0xffd23f), -0.06, 0.085, -0.01));
+    g.add(mesh(new THREE.IcosahedronGeometry(0.055, 0), cream, 0, 0.17, -0.22));
     g.position.copy(home);
     scene.add(g);
     this.state = 'idle'; this.timer = 1; this.hop = null; this.target = null; this.yaw = this.rand() * 6.28;
@@ -130,9 +125,9 @@ export class Rabbit {
     return null;
   }
 
-  update(dt, t, cat) {
+  update(dt, t, player) {
     const g = this.group;
-    const near = cat && Math.hypot(g.position.x - cat.pos.x, g.position.z - cat.pos.z) < 1.3;
+    const near = player && Math.hypot(g.position.x - player.pos.x, g.position.z - player.pos.z) < 1.3;
     if (this.hop) {
       this.hop.t += dt / 0.32;
       const k = Math.min(1, this.hop.t);
@@ -151,20 +146,20 @@ export class Rabbit {
       }
     } else {
       this.timer -= dt;
-      if (near) { this.target = this.pickTarget(cat.pos); this.state = this.target ? 'move' : 'idle'; this.timer = 0.5; }
+      if (near) { this.target = this.pickTarget(player.pos); this.state = this.target ? 'move' : 'idle'; this.timer = 0.5; }
       else if (this.timer <= 0) { this.target = this.pickTarget(); this.state = this.target ? 'move' : 'idle'; this.timer = 1; }
       // nibbling
       this.head.rotation.x = Math.max(0, Math.sin(t * 5)) * 0.35;
     }
     g.rotation.y += (((this.yaw - g.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 10);
-    this.ears[0].rotation.z = -0.2 - Math.max(0, Math.sin(t * 1.7)) * 0.25;
-    this.ears[1].rotation.z = 0.2 + Math.max(0, Math.sin(t * 2.3 + 1)) * 0.2;
+    this.ears[0].rotation.z = -2.6 + Math.sin(t * 1.7) * 0.08 + (this.hop ? 0.25 : 0);
+    this.ears[1].rotation.z = 2.6 - Math.sin(t * 2.3 + 1) * 0.08 - (this.hop ? 0.25 : 0);
     if (!this.hop) g.position.y = this.world.groundHeight(g.position.x, g.position.z);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Birds: sparrows that hop, peck, and flee when the cat gets careless
+// Birds: sparrows that hop, peck, and flee when the rabbit gets careless
 // ---------------------------------------------------------------------------
 function makeBird(rand) {
   const g = new THREE.Group();
@@ -229,15 +224,15 @@ export class Birds {
     b.yaw = Math.atan2(b.to.x - b.from.x, b.to.z - b.from.z);
   }
 
-  update(dt, t, cat, onStartle) {
+  update(dt, t, player, onStartle) {
     for (const b of this.list) {
       const g = b.group;
-      const dx = g.position.x - cat.pos.x, dz = g.position.z - cat.pos.z;
+      const dx = g.position.x - player.pos.x, dz = g.position.z - player.pos.z;
       const dist = Math.hypot(dx, dz);
       if (b.state === 'ground') {
-        const alert = cat.noise; // metres of awareness based on how the cat moves
+        const alert = player.noise; // metres of awareness based on how the player moves
         // a short beat of suspicion before taking off: that's the window for a boop
-        if (dist < alert && Math.abs(g.position.y - cat.feetY) < 1.2) b.alarm = (b.alarm || 0) + dt;
+        if (dist < alert && Math.abs(g.position.y - player.feetY) < 1.2) b.alarm = (b.alarm || 0) + dt;
         else b.alarm = Math.max(0, (b.alarm || 0) - dt);
         if (b.alarm > 0.4) { b.alarm = 0; this.startle(b); onStartle?.(b); continue; }
         b.timer -= dt;
@@ -283,7 +278,7 @@ export class Birds {
         for (const [i, w] of b.wings.entries()) w.rotation.z = (i ? -1 : 1) * 0.05;
         if (b.timer <= 0) {
           const target = this.world.randomLawnPoint(this.rand);
-          if (target.distanceTo(new THREE.Vector3(cat.pos.x, target.y, cat.pos.z)) > 5) this.flyTo(b, target, 'ground');
+          if (target.distanceTo(new THREE.Vector3(player.pos.x, target.y, player.pos.z)) > 5) this.flyTo(b, target, 'ground');
           else b.timer = 2;
         }
       }
@@ -367,7 +362,7 @@ export class Butterflies {
 }
 
 // ---------------------------------------------------------------------------
-// A beach ball the cat can bat around the lawn
+// A beach ball the rabbit can nudge around the lawn
 // ---------------------------------------------------------------------------
 export class Ball {
   constructor(scene, world) {
@@ -390,16 +385,16 @@ export class Ball {
     scene.add(this.mesh);
   }
 
-  update(dt, cat) {
-    const dx = this.pos.x - cat.pos.x, dz = this.pos.z - cat.pos.z, d = Math.hypot(dx, dz);
+  update(dt, player) {
+    const dx = this.pos.x - player.pos.x, dz = this.pos.z - player.pos.z, d = Math.hypot(dx, dz);
     const reach = this.r + 0.22;
     let hit = 0;
-    if (d < reach && cat.feetY < this.pos.y + this.r) {
-      const push = Math.max(1.2, cat.speed * 1.4);
-      this.vel.x = (dx / (d || 1)) * push + cat.vel.x * 0.4;
-      this.vel.z = (dz / (d || 1)) * push + cat.vel.z * 0.4;
-      this.pos.x = cat.pos.x + (dx / (d || 1)) * reach;
-      this.pos.z = cat.pos.z + (dz / (d || 1)) * reach;
+    if (d < reach && player.feetY < this.pos.y + this.r) {
+      const push = Math.max(1.2, player.speed * 1.4);
+      this.vel.x = (dx / (d || 1)) * push + player.vel.x * 0.4;
+      this.vel.z = (dz / (d || 1)) * push + player.vel.z * 0.4;
+      this.pos.x = player.pos.x + (dx / (d || 1)) * reach;
+      this.pos.z = player.pos.z + (dz / (d || 1)) * reach;
       hit = push;
     }
     const before = { x: this.pos.x, z: this.pos.z };

@@ -20,7 +20,7 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
   background: radial-gradient(ellipse at 50% 55%, transparent 55%, rgba(60, 35, 10, 0.28) 100%);
   transition: opacity 0.4s;
 }
-body.stalking #vignette { background: radial-gradient(ellipse at 50% 55%, transparent 38%, rgba(40, 25, 10, 0.5) 100%); }
+body.sneaking #vignette { background: radial-gradient(ellipse at 50% 55%, transparent 38%, rgba(40, 25, 10, 0.5) 100%); }
 
 kbd {
   display: inline-block; min-width: 1.6em; padding: 0.05em 0.45em; border-radius: 6px;
@@ -42,6 +42,8 @@ kbd {
 .zone.surface::before { content: '\2600  '; }
 .zone.burrow { color: #fff4dc; background: rgba(74, 46, 26, 0.9); }
 .zone.burrow::before { content: '\25BC  '; }
+.zone.house { color: #fff; background: rgba(196, 87, 58, 0.92); }
+.zone.house::before { content: '\2302  '; }
 #fade { position: fixed; inset: 0; background: #0d0805; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 #fade.on { opacity: 1; transition: none; }
 .music-note { margin-top: 8px; font-size: 13px; color: var(--leaf); font-weight: 500; }
